@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AFCR Timesheet Portal</title>
+  <link rel="icon" type="image/png" href="/static/images/afcr_logo.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Mobile Top Bar -->
+  <header class="app-header">
+    <div class="brand-wrapper">
+      <img src="/static/images/afcr_logo.png" alt="AFCR Logo" class="brand-logo-img">
+      <div>
+        <div class="brand-title">Affordable <span>Food Cart</span> Rentals</div>
+        <div class="brand-subtitle">Worker Timesheet Portal</div>
+      </div>
+    </div>
+    <div class="header-badge">
+      <div class="status-dot"></div>
+      <span>Connected</span>
+    </div>
+  </header>
+
+  <main class="mobile-wrapper">
+    
+    <!-- Step 1: Camera / Upload -->
+    <section id="stepUpload">
+      <div class="mobile-card-top">
+        <img src="/static/images/afcr_logo.png" alt="AFCR Food Trailer">
+        <h1>Daily <span>Timesheet</span> Submission</h1>
+        <p>Photograph your completed daily sheet to log your hours.</p>
+      </div>
+
+      <div class="mobile-capture-box">
+        <div class="mobile-capture-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+        <input type="file" id="galleryInput" accept="image/*" style="display: none;">
+
+        <button class="btn btn-camera-main" id="btnSnapPhoto">
+          Take Photo of Form
+        </button>
+
+        <button class="btn btn-outline btn-block" id="btnChoosePhoto">
+          Choose from Photos
+        </button>
+      </div>
+
+      <p style="text-align: center; font-size: 0.78rem; color: var(--text-tertiary); line-height: 1.4;">
+        Direct local upload to the office network. No internet connection required.
+      </p>
+    </section>
+
+    <!-- Step 2: Processing -->
+    <section id="stepProcessing" class="hidden">
+      <div class="progress-card">
+        <div class="spinner"></div>
+        <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--brand-navy); margin-bottom: 4px;">
+          Scanning Document...
+        </h2>
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">
+          Extracting text and hours. Approximately <span id="countdownSecs">3</span>s remaining.
+        </p>
+
+        <div class="progress-track">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3: Review & Edit -->
+    <section id="stepReview" class="hidden">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--brand-navy);">Review Extracted Data</h2>
+            <p style="font-size: 0.82rem; color: var(--text-secondary);">Confirm all fields match your sheet before submitting.</p>
+          </div>
+          <div id="checkboxCountBadge" style="background: var(--surface-muted); color: var(--text-secondary); padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+            0 Checkboxes
+          </div>
+        </div>
+
+        <!-- Thumbnail -->
+        <div class="image-preview-wrapper" style="margin-bottom: 16px;">
+          <img id="reviewImgPreview" src="" alt="Captured Timesheet">
+        </div>
+
+        <form id="reviewForm">
+          <div class="form-field">
+            <label for="workerName">Worker / Employee Name *</label>
+            <input type="text" id="workerName" class="form-control" placeholder="Employee Name" required>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-field">
+              <label for="formDate">Date *</label>
+              <input type="text" id="formDate" class="form-control" placeholder="MM/DD/YYYY" required>
+            </div>
+            <div class="form-field">
+              <label for="hoursWorked">Total Hours *</label>
+              <input type="text" id="hoursWorked" class="form-control" placeholder="e.g. 8.0" required>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-field">
+              <label for="cartId">Cart / Location</label>
+              <input type="text" id="cartId" class="form-control" placeholder="e.g. C01 Woodburn">
+            </div>
+            <div class="form-field">
+              <label for="jobCode">Job Code</label>
+              <input type="text" id="jobCode" class="form-control" placeholder="e.g. MNT, CLN">
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="notes">Notes & Tasks Completed</label>
+            <textarea id="notes" class="form-control" rows="2" placeholder="Tasks performed, repairs, supplies..."></textarea>
+          </div>
+
+          <details style="margin-bottom: 16px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;">
+            <summary style="font-weight: 600; cursor: pointer; color: var(--brand-navy); font-size: 0.82rem;">
+              View Scanned Text From Image
+            </summary>
+            <pre id="mobileRawText" style="margin-top: 8px; font-size: 0.78rem; background: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; white-space: pre-wrap; max-height: 130px; overflow-y: auto; font-family: monospace;"></pre>
+          </details>
+
+          <button type="submit" class="btn btn-success btn-block" style="padding: 14px; font-size: 1rem; margin-top: 6px;">
+            Confirm & Submit to Office
+          </button>
+        </form>
+
+        <button class="btn btn-outline btn-block" id="btnRetakePhoto" style="margin-top: 8px;">
+          Retake Photo
+        </button>
+      </div>
+    </section>
+
+    <!-- Step 4: Submission Confirmation -->
+    <section id="stepSuccess" class="hidden">
+      <div class="card" style="text-align: center; padding: 32px 20px;">
+        <div style="width: 52px; height: 52px; background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 28px; height: 28px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--brand-navy); margin-bottom: 6px;">
+          Timesheet Submitted
+        </h2>
+        <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 20px;">
+          Your document has been verified and logged to the office spreadsheet.
+        </p>
+
+        <div style="background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; text-align: left; margin-bottom: 20px; font-size: 0.82rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span style="color: var(--text-secondary);">Submission ID:</span>
+            <strong id="successSubmissionId">AFCR-0000</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--text-secondary);">Recorded At:</span>
+            <span id="successTimestamp">Today</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btnSubmitAnother" style="padding: 12px;">
+          Submit Another Form
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="/static/js/mobile.js"></script>
+</body>
+</html>

@@ -1,0 +1,992 @@
+{
+  "cart_tabs": [
+    "FC121",
+    "FC122",
+    "FC123",
+    "FC124",
+    "FC125",
+    "FC126",
+    "FC127",
+    "FC128",
+    "FC129",
+    "FC130",
+    "FC110",
+    "FC119",
+    "Shop"
+  ],
+  "standard_columns": [
+    "Name",
+    "Task",
+    "Category",
+    "Build / Reconditioning",
+    "Code",
+    "Date",
+    "Time In",
+    "Out",
+    "Task Total"
+  ],
+  "worker_roster": [
+    "Elijah",
+    "Dale",
+    "Kelly",
+    "Israel",
+    "Dani",
+    "Chico",
+    "Clark",
+    "Jonathan",
+    "Francisco",
+    "Cini Escobar",
+    "Carlos",
+    "Salvador",
+    "Ramon",
+    "Sam",
+    "Mario",
+    "Antonio"
+  ],
+  "mt_codes": [
+    {
+      "code": "F1",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Remove and deconstruct parts if applicable"
+    },
+    {
+      "code": "F2",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Cut, bend and weld 2 main frame rails; weld A-frame coupler to tongue"
+    },
+    {
+      "code": "F3",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Weld leaf spring hangers, U-bolt brackets, cross members and 2x2 floor joists"
+    },
+    {
+      "code": "F4",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Weld grey water tank supports"
+    },
+    {
+      "code": "F5",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Install grey water tank"
+    },
+    {
+      "code": "F6",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Mount axles and wheels"
+    },
+    {
+      "code": "F7",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Install tongue jack"
+    },
+    {
+      "code": "F8",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Paint frame"
+    },
+    {
+      "code": "F9",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Install fenders; trim fender wells"
+    },
+    {
+      "code": "F10",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Install battery box and breakaway switch"
+    },
+    {
+      "code": "F11",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Install 3/4\" marine plywood deck on trailer and tongue; trim deck"
+    },
+    {
+      "code": "F12",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Add wiring tubes; run light/brake harness; install tail and marker lights"
+    },
+    {
+      "code": "F13",
+      "category": "Frame",
+      "type": "Build",
+      "task": "Hook up trailer brakes"
+    },
+    {
+      "code": "S1",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Cut 1x1 tube and studs; lay out walls"
+    },
+    {
+      "code": "S2",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Weld front door (egress) wall"
+    },
+    {
+      "code": "S3",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Weld rear service/window wall"
+    },
+    {
+      "code": "S4",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Weld cook (hot) wall"
+    },
+    {
+      "code": "S5",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Weld sink (wet) wall"
+    },
+    {
+      "code": "S6",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Grind welds; apply tape/adhesive to tubes"
+    },
+    {
+      "code": "S7",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Sand exterior aluminum sheets on the work table"
+    },
+    {
+      "code": "S8",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Install exterior aluminum sheets on all 4 walls"
+    },
+    {
+      "code": "S9",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Cut window openings (rear wall + sink wall)"
+    },
+    {
+      "code": "S10",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Install windows (rear wall + sink wall)"
+    },
+    {
+      "code": "S11",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Prep deck; stand up walls; screw to deck and to each other"
+    },
+    {
+      "code": "S12",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Cut, drill and weld 2\" roof rafters; weld to shell"
+    },
+    {
+      "code": "S13",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Sand/scuff walls, apply tinted primer, paint"
+    },
+    {
+      "code": "S14",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Prep and paint door; install door; caulk"
+    },
+    {
+      "code": "S15",
+      "category": "Shell",
+      "type": "Build",
+      "task": "Install exterior roof caps and 4 Tread Brite corner caps"
+    },
+    {
+      "code": "I1",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Sheetrock + stainless steel on cook wall"
+    },
+    {
+      "code": "I2",
+      "category": "Interior",
+      "type": "Build",
+      "task": "OSB + FRP on sink wall"
+    },
+    {
+      "code": "I3",
+      "category": "Interior",
+      "type": "Build",
+      "task": "OSB + FRP on rear service wall"
+    },
+    {
+      "code": "I4",
+      "category": "Interior",
+      "type": "Build",
+      "task": "OSB + FRP + stainless on door wall"
+    },
+    {
+      "code": "I5",
+      "category": "Interior",
+      "type": "Build",
+      "task": "OSB + FRP on ceiling"
+    },
+    {
+      "code": "I6",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Cut and weld 2 doghouses"
+    },
+    {
+      "code": "I7",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Install doghouses; cover with OSB + FRP; undercoat underside"
+    },
+    {
+      "code": "I8",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Install 4 sheets Tread Brite floor"
+    },
+    {
+      "code": "I9",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Caulk floor seams and wall-to-floor joint"
+    },
+    {
+      "code": "I10",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Install interior trim (window, door, doghouse, RV vent)"
+    },
+    {
+      "code": "I11",
+      "category": "Interior",
+      "type": "Build",
+      "task": "Install wire shelving"
+    },
+    {
+      "code": "R1",
+      "category": "Roof",
+      "type": "Build",
+      "task": "Apply double-sided tape and caulk to rafters"
+    },
+    {
+      "code": "R2",
+      "category": "Roof",
+      "type": "Build",
+      "task": "Install 4 aluminum roof sheets"
+    },
+    {
+      "code": "R3",
+      "category": "Roof",
+      "type": "Build",
+      "task": "Cut, bend and install roof edge metal (corner caps, flashing, checker plate)"
+    },
+    {
+      "code": "R4",
+      "category": "Roof",
+      "type": "Build",
+      "task": "Cut 14x14 opening; install RV vent"
+    },
+    {
+      "code": "R5",
+      "category": "Roof",
+      "type": "Build",
+      "task": "Seal roof seams with self-leveling caulk and tape"
+    },
+    {
+      "code": "R6",
+      "category": "Roof",
+      "type": "Build",
+      "task": "Cut 12\" x 12\" roof opening for exhaust; attach mounting assembly"
+    },
+    {
+      "code": "H1",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Bend and weld hood body; drill holes for FSS and grease pan"
+    },
+    {
+      "code": "H2",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Build fan shroud and fan mount"
+    },
+    {
+      "code": "H3",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Cut and weld exhaust stack/duct"
+    },
+    {
+      "code": "H4",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Mount and bolt hood in cart"
+    },
+    {
+      "code": "H5",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Weld duct to hood; install and insulate stack"
+    },
+    {
+      "code": "H6",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Mount exhaust fan on roof; seal around fan"
+    },
+    {
+      "code": "H7",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Caulk hood panels; install hood trim"
+    },
+    {
+      "code": "H8",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Install grease filters and drip pan/trap"
+    },
+    {
+      "code": "H9",
+      "category": "Hood",
+      "type": "Build",
+      "task": "Install fire suppression system"
+    },
+    {
+      "code": "P1",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Prep and mount sinks; install strainers, drains, faucets, drainboards (3-comp + hand sink)"
+    },
+    {
+      "code": "P2",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Install and secure fresh water tank"
+    },
+    {
+      "code": "P3",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Install water heater, pressure relief drain, and water pump"
+    },
+    {
+      "code": "P4",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Run hot/cold PEX and valves; install fresh water inlet, backflow valve, line to tank, angle brackets"
+    },
+    {
+      "code": "P5",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Mount and strap grey water tank"
+    },
+    {
+      "code": "P6",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Run ABS grey water lines; vent to exterior"
+    },
+    {
+      "code": "P7",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Install indirect drain/air gap"
+    },
+    {
+      "code": "P8",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Install grey water outlet and gate valve"
+    },
+    {
+      "code": "P9",
+      "category": "Plumbing",
+      "type": "Build",
+      "task": "Leak test; fix leaks"
+    },
+    {
+      "code": "E1",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Cut openings for boxes and main panel; drill holes"
+    },
+    {
+      "code": "E2",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install interior and exterior boxes"
+    },
+    {
+      "code": "E3",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install main panel (breaker box)"
+    },
+    {
+      "code": "E4",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Build and wire main power inlet (250V/50A)"
+    },
+    {
+      "code": "E5",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Run MC cable; connect to boxes and panel"
+    },
+    {
+      "code": "E6",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install GFCI/duplex outlets and switches"
+    },
+    {
+      "code": "E7",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install interior LED lights"
+    },
+    {
+      "code": "E8",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install exterior flood lights"
+    },
+    {
+      "code": "E9",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install outlet and panel covers; label outlets and breakers"
+    },
+    {
+      "code": "E10",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Hook up FSS alarm light"
+    },
+    {
+      "code": "E11",
+      "category": "Electrical",
+      "type": "Build",
+      "task": "Install extra power outlets (custom request)"
+    },
+    {
+      "code": "G1",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Weld and install propane tank holders"
+    },
+    {
+      "code": "G2",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Build gas lines with valves and mechanical shutoffs; seal threads"
+    },
+    {
+      "code": "G3",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Install gas line into cart with exterior shutoff and interior main shutoff valve"
+    },
+    {
+      "code": "G4",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Run gas line to water heater (LP)"
+    },
+    {
+      "code": "G5",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Ground gas line; seal threads"
+    },
+    {
+      "code": "G6",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Pressure test gas line"
+    },
+    {
+      "code": "G7",
+      "category": "Gas",
+      "type": "Build",
+      "task": "Install cooking units; connect to gas"
+    },
+    {
+      "code": "X1",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Cut and weld awnings and exterior shelves"
+    },
+    {
+      "code": "X2",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Install awnings, support rods, drip rails"
+    },
+    {
+      "code": "X3",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Install exterior shelves and brackets"
+    },
+    {
+      "code": "X4",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Install exterior window and door trim"
+    },
+    {
+      "code": "X5",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Install puck locks, awning hasps and padlocks, door knob, closer"
+    },
+    {
+      "code": "X6",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Install beautification package (corners, bumper)"
+    },
+    {
+      "code": "X7",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Exterior caulking/sealing"
+    },
+    {
+      "code": "X8",
+      "category": "Exterior Finish",
+      "type": "Build",
+      "task": "Touch-up paint"
+    },
+    {
+      "code": "L1",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "Checklist walkthrough and safety inspection"
+    },
+    {
+      "code": "L2",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "Test all systems (water, gas, electrical, FSS)"
+    },
+    {
+      "code": "L3",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "Label all necessary locations"
+    },
+    {
+      "code": "L4",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "QC"
+    },
+    {
+      "code": "L5",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "Final fixes"
+    },
+    {
+      "code": "L6",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "Label keys"
+    },
+    {
+      "code": "L7",
+      "category": "Final Check",
+      "type": "Build",
+      "task": "Clean, degrease and polish interior/exterior; final wipe down"
+    }
+  ],
+  "rt_codes": [
+    {
+      "code": "C1",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean trash in the Food Cart"
+    },
+    {
+      "code": "C2",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean hood area, filters and grease tray"
+    },
+    {
+      "code": "C3",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean the FSS tank"
+    },
+    {
+      "code": "C4",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean cooking equipment and parts (grill, flattop, 4-burner, stove, oven)"
+    },
+    {
+      "code": "C5",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean ceiling"
+    },
+    {
+      "code": "C6",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean walls"
+    },
+    {
+      "code": "C7",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean hot wall"
+    },
+    {
+      "code": "C8",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean interior lights, outlets and light switches"
+    },
+    {
+      "code": "C9",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean window trim and glass (inside and outside)"
+    },
+    {
+      "code": "C10",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean shelves and tables"
+    },
+    {
+      "code": "C11",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean refrigerator"
+    },
+    {
+      "code": "C12",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean 3-compartment and handwashing sink"
+    },
+    {
+      "code": "C13",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean fresh water tank"
+    },
+    {
+      "code": "C14",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean grey water tank"
+    },
+    {
+      "code": "C15",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean dog house"
+    },
+    {
+      "code": "C16",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean door (interior and exterior)"
+    },
+    {
+      "code": "C17",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean floors"
+    },
+    {
+      "code": "C18",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean exterior lights"
+    },
+    {
+      "code": "C19",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean exterior walls"
+    },
+    {
+      "code": "C20",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean exterior serving shelves and awnings"
+    },
+    {
+      "code": "C21",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean padlocks and brackets"
+    },
+    {
+      "code": "C22",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean gas tube area"
+    },
+    {
+      "code": "C23",
+      "category": "Cleaning",
+      "type": "Reconditioning",
+      "task": "Clean rims and exterior fenders"
+    },
+    {
+      "code": "M1",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace old aluminum hot wall to stainless steel wall"
+    },
+    {
+      "code": "M2",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Take off old FRP and replace with new FRP"
+    },
+    {
+      "code": "M3",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair the stainless steel"
+    },
+    {
+      "code": "M4",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace RV ceiling vent"
+    },
+    {
+      "code": "M5",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Put new tread bright on the floors"
+    },
+    {
+      "code": "M6",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace hood"
+    },
+    {
+      "code": "M7",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace hood fan"
+    },
+    {
+      "code": "M8",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace sinks or faucets"
+    },
+    {
+      "code": "M9",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace fresh water tank"
+    },
+    {
+      "code": "M10",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace grey water tank"
+    },
+    {
+      "code": "M11",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace water heater or water pump"
+    },
+    {
+      "code": "M12",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace gas lines"
+    },
+    {
+      "code": "M13",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Switch from natural gas to propane, or propane to natural gas"
+    },
+    {
+      "code": "M14",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace propane holder"
+    },
+    {
+      "code": "M15",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace breakers, GFCIs, electrical panel or power inlet"
+    },
+    {
+      "code": "M16",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace interior lights"
+    },
+    {
+      "code": "M17",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace outlet and light switch faces"
+    },
+    {
+      "code": "M18",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace interior shelves, tables and equipment stands"
+    },
+    {
+      "code": "M19",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Add new cooking equipment (stove, fryer, flattop, 4 burner, oven)"
+    },
+    {
+      "code": "M20",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair FSS (interlock, piping, alarm lights)"
+    },
+    {
+      "code": "M21",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Tag the Fire Suppression System"
+    },
+    {
+      "code": "M22",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace window and door trim/molding"
+    },
+    {
+      "code": "M23",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair door entrance"
+    },
+    {
+      "code": "M24",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair door handles"
+    },
+    {
+      "code": "M25",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair holes with rivets or screws"
+    },
+    {
+      "code": "M26",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Caulk interior (ceiling, hood, floor/wall, dog house, sink pipes, panel box, door, holes)"
+    },
+    {
+      "code": "M27",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Caulk exterior (roof, tongue step)"
+    },
+    {
+      "code": "M28",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Remove stickers, sand and tape exterior walls"
+    },
+    {
+      "code": "M29",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Paint exterior walls and repaint exterior walls"
+    },
+    {
+      "code": "M30",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair/replace beautification panels"
+    },
+    {
+      "code": "M31",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair awnings and exterior shelves"
+    },
+    {
+      "code": "M32",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace exterior lights"
+    },
+    {
+      "code": "M33",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace springs, axle or trailer wiring"
+    },
+    {
+      "code": "M34",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace brake lights"
+    },
+    {
+      "code": "M35",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace and paint pad lock supports"
+    },
+    {
+      "code": "M36",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Replace puck locks"
+    },
+    {
+      "code": "M37",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Repair pad locks"
+    },
+    {
+      "code": "M38",
+      "category": "Maintenance/Repairs",
+      "type": "Reconditioning",
+      "task": "Checklist walkthrough and QC"
+    }
+  ]
+}

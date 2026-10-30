@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+env.bak/
+venv.bak/
+
+# Environment variables & Sensitive Credentials
+.env
+.env.*
+oauth_client_secrets.json
+oauth_token.json
+google_credentials.json
+
+# Scratch & Temporary Test Files
+scratch/
+scratch_*.png
+crop_*.png
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Local scans / output directories
+AFCR_Scans/
+scans/

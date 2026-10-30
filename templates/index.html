@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AFCR Timesheet & Document Portal</title>
+  <link rel="icon" type="image/png" href="/static/images/afcr_logo.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="brand-wrapper">
+      <img src="/static/images/afcr_logo.png" alt="Affordable Food Cart Rentals" class="brand-logo-img">
+      <div>
+        <div class="brand-title">Affordable <span>Food Cart</span> Rentals</div>
+        <div class="brand-subtitle">Timesheet Automation & Multi-Cart Sync Portal</div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <button id="btnOpenFeedbackModal" class="btn btn-sm" style="display: flex; align-items: center; gap: 6px; font-weight: 600; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; border-radius: 6px; cursor: pointer; padding: 6px 12px; font-size: 0.82rem; transition: all 0.2s;" title="Leave notes or feedback for Dale">
+        <span style="font-size: 0.95rem;">💬</span>
+        <span>Feedback & Notes</span>
+      </button>
+      <div id="googleSheetsBadge" class="google-sync-badge">
+        <span class="sync-dot"></span>
+        <span id="googleSheetsBadgeText">Checking Google Sheets...</span>
+        <button id="btnOpenGoogleSettings" class="btn-icon-tiny" title="Google Sheets Settings">⚙️</button>
+      </div>
+      <div class="header-badge">
+        <div class="status-dot"></div>
+        <span>Local Server ({{ local_ip }}:{{ port }})</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    
+    <!-- Action Toolbar -->
+    <div class="action-bar">
+      <button class="btn btn-gold-prominent" id="btnToggleScan">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        Scan Paper Timesheet
+      </button>
+      <button class="btn btn-outline" id="btnOpenManualModal">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        Enter Timesheet (By Hand)
+      </button>
+      <button class="btn btn-outline" id="btnOpenWorkerQR">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 002 2z" />
+        </svg>
+        Worker QR Code
+      </button>
+      <button class="btn btn-outline" id="btnOpenCodesModal">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        Task Codes (MT/RT)
+      </button>
+      <button class="btn btn-outline" id="btnOpenRosterModal">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+        Team & Trailers
+      </button>
+      <button class="btn btn-outline" id="btnOpenFolder">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+        </svg>
+        Open Scans Folder
+      </button>
+      <a href="/api/export/excel" class="btn btn-outline" download>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        Export FC TIMES (.xlsx)
+      </a>
+      <a href="/api/export/csv" class="btn btn-outline" download>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        Export CSV Audit
+      </a>
+      <button class="btn btn-outline" id="btnConfigureGoogleSheets">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        Google Sheets Config
+      </button>
+    </div>
+
+    <!-- Google Sheets Live Banner -->
+    <div id="googleSheetsBanner" class="gsheet-sync-banner">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="gsheet-icon">📊</span>
+        <div>
+          <strong id="gsheetStatusTitle">Google Sheets Sync</strong>
+          <div id="gsheetStatusSub" style="font-size: 0.82rem; color: var(--text-secondary);">
+            Synchronizes daily timesheet hours directly into Google Drive Food Cart tabs.
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <button id="btnSyncAllSheets" class="btn btn-sm btn-outline hidden" title="Push all local trailer tabs to Google Sheets">
+          🔄 Push All Tabs to Sheet
+        </button>
+        <a id="btnOpenSpreadsheetLink" href="#" target="_blank" class="btn btn-sm btn-outline hidden">
+          Open in Google Sheets ↗
+        </a>
+        <button id="btnCheckGoogleSync" class="btn btn-sm btn-primary">Check Connection</button>
+      </div>
+    </div>
+
+    <!-- Metrics Row -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Active Food Cart Tabs</div>
+        <div class="stat-val" id="statCartCount">10+</div>
+        <div class="stat-sub">FC121 - FC130 & Shop</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Task Entries</div>
+        <div class="stat-val" id="statTotalScans">0</div>
+        <div class="stat-sub">Logged across carts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Current Trailer Viewed</div>
+        <div class="stat-val" id="statActiveTabName" style="color: var(--brand-blue);">FC127</div>
+        <div class="stat-sub" id="statActiveTabTotal">Total: --:--:--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Desktop Storage</div>
+        <div class="stat-val" style="font-size: 1.05rem; font-weight: 700;">AFCR_Scans/FC TIMES</div>
+        <div class="stat-sub">{{ scans_folder }}</div>
+      </div>
+    </div>
+
+    <!-- Paper Scan Section (Collapsible, accessed via 'Scan Paper Timesheet' button) -->
+    <div class="card hidden collapsible-card" id="paperScanCard" style="border-left: 4px solid var(--brand-blue);">
+      <div class="card-header-row">
+        <div>
+          <div class="card-title" style="margin-bottom: 0;">Scan & Process Paper Timesheets</div>
+          <div class="card-desc" style="margin-bottom: 0;">Upload scanned PDF or JPG/PNG image from the office scanner to auto-extract fields.</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn btn-gold-prominent btn-sm" id="btnRunTestScanMT">Run Sample Scan (MT Form)</button>
+          <button class="btn btn-accent btn-sm" id="btnRunTestScan">Run Sample Scan (Daily FC127)</button>
+          <button class="btn btn-outline btn-sm" id="btnCloseScanCard">&times; Close</button>
+        </div>
+      </div>
+      
+      <input type="file" id="desktopFileInput" accept="image/*,application/pdf" style="display: none;">
+      <div class="dropzone" id="desktopDropzone">
+        <div class="dropzone-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
+        <div class="dropzone-text">Click or drag scanned timesheet document here</div>
+        <div class="dropzone-sub">Supports PDF, PNG, JPG scanned pages. Automatically recognizes workers, tasks, hours & cart tabs!</div>
+      </div>
+    </div>
+
+    <!-- Food Cart Timesheet Tabs Card (Full Width Primary View) -->
+    <div class="card">
+      <div class="card-header-row" style="flex-wrap: wrap; gap: 10px;">
+        <div>
+          <div class="card-title" style="margin-bottom: 0;">Food Cart Spreadsheets</div>
+          <div class="card-desc" style="margin-bottom: 0;">View, enter, and edit entries by trailer tab (synced with FC TIMES_ FC121-130 and Google Sheets).</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <input type="text" id="cartFilterSearch" placeholder="Filter by name/task/code..." class="form-control form-control-sm" style="min-width: 150px; max-width: 260px; flex: 1;">
+          <button class="btn btn-outline btn-sm" id="btnRefreshTabs">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Tab Navigation Bar -->
+      <div class="cart-nav-scroll" style="display: flex; align-items: center; gap: 8px;">
+        <div class="cart-tabs-nav" id="cartTabsList" style="flex: 1;">
+          <!-- Dynamically populated from backend cart list -->
+        </div>
+        <button class="btn btn-sm btn-outline" id="btnQuickAddTrailerTab" style="border-style: dashed; white-space: nowrap; flex-shrink: 0;" title="Create new Food Cart / Trailer Tab">
+          + New Trailer
+        </button>
+      </div>
+
+      <!-- Trailer Tab Banner -->
+      <div class="tab-header-banner">
+        <div>
+          <span style="font-weight: 700; font-size: 1.15rem; color: var(--brand-navy);" id="currentTabTitle">Trailer Number: FC127</span>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <span class="total-time-badge" id="currentTabTotalTime">Total Time: 0:00:00</span>
+          <button class="btn btn-sm btn-outline" id="btnInitCartMT" title="Pre-populate this cart spreadsheet with all 96 standard MT manufacturing build codes">
+            📋 Format MT Build Schedule
+          </button>
+          <button class="btn btn-sm btn-primary" id="btnQuickAddRow">
+            <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Add Entry to <span id="quickAddCartName">FC127</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Cart Rows Table with Actions Column -->
+      <div class="table-wrapper">
+        <table class="data-table" id="cartDataTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Task</th>
+              <th>Category</th>
+              <th>Build / Recond</th>
+              <th>Code</th>
+              <th>Date</th>
+              <th>Time In</th>
+              <th>Out</th>
+              <th style="text-align: right;">Task Total</th>
+              <th style="text-align: right; width: 120px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="cartTableBody">
+            <tr>
+              <td colspan="10" style="text-align: center; color: var(--text-tertiary); padding: 24px;">
+                Loading trailer data...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+
+  <!-- Multi-Row Timesheet Verification Modal -->
+  <div id="desktopVerifyModal" class="modal-backdrop hidden">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">Verify Scanned Timesheet</h3>
+        <button id="btnCloseModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="modal-split">
+        <!-- Document Image Preview -->
+        <div class="doc-preview-panel">
+          <div id="modalPageControls" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btnModalPrevPage" style="padding: 3px 10px; font-size: 0.78rem;">◀ Prev Page</button>
+            <span id="modalPageIndicator" style="font-weight: 700; font-size: 0.82rem; color: var(--brand-navy);">Page 1 of 1</span>
+            <button type="button" class="btn btn-outline btn-sm" id="btnModalNextPage" style="padding: 3px 10px; font-size: 0.78rem;">Next Page ▶</button>
+          </div>
+          <div class="image-preview-wrapper" style="max-height: 440px;">
+            <img id="modalImgPreview" src="" alt="Scanned Document">
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+            <span id="modalCheckboxBadge" style="font-size: 0.78rem; background: var(--surface-muted); color: var(--text-secondary); padding: 4px 8px; border-radius: 4px; font-weight: 600;">
+              0 Checkboxes Found
+            </span>
+            <span id="modalRowCountBadge" style="font-size: 0.78rem; font-weight: 700; color: var(--brand-blue);">
+              0 Task Rows Extracted
+            </span>
+          </div>
+        </div>
+
+        <!-- Timesheet Header Fields -->
+        <div class="doc-fields-panel">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-field">
+              <label>Worker / Employee Name</label>
+              <input type="text" id="modalWorkerName" class="form-control" placeholder="e.g. Dani Escobar, Israel, Kelly">
+            </div>
+            <div class="form-field">
+              <label>Date</label>
+              <input type="text" id="modalDate" class="form-control" placeholder="MM/DD/YYYY">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: var(--brand-navy); font-size: 0.95rem;">Extracted Task Line Items</strong>
+            <button type="button" class="btn btn-sm btn-outline" id="btnAddModalRow">+ Add Task Line</button>
+          </div>
+
+          <!-- Multi-Row Table Editor -->
+          <div class="table-wrapper" style="max-height: 320px; border: 1px solid var(--border); border-radius: 6px;">
+            <table class="data-table" style="font-size: 0.82rem;">
+              <thead style="position: sticky; top: 0; background: var(--brand-navy); color: white; z-index: 2;">
+                <tr>
+                  <th style="width: 22%;">Task Description</th>
+                  <th style="width: 10%;">Code</th>
+                  <th style="width: 13%;">Category</th>
+                  <th style="width: 10%;">Type</th>
+                  <th style="width: 11%;">Date</th>
+                  <th style="width: 9%;">Time In</th>
+                  <th style="width: 9%;">Out</th>
+                  <th style="width: 8%;">Total</th>
+                  <th style="width: 9%;">Cart #</th>
+                  <th style="width: 4%;"></th>
+                </tr>
+              </thead>
+              <tbody id="modalRowsTableBody">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Datalist for task codes autocomplete -->
+          <datalist id="taskCodesDatalist"></datalist>
+
+          <!-- Raw Text Drawer -->
+          <details style="margin-top: 14px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;">
+            <summary style="font-weight: 600; cursor: pointer; color: var(--brand-navy); font-size: 0.8rem;">
+              View OCR Raw Text & Confidence
+            </summary>
+            <pre id="modalRawText" style="margin-top: 8px; font-size: 0.75rem; background: #0f172a; color: #38bdf8; padding: 10px; border-radius: 4px; white-space: pre-wrap; max-height: 120px; overflow-y: auto; font-family: monospace;"></pre>
+          </details>
+
+        </div>
+      </div>
+
+      <div class="modal-footer-row">
+        <div style="font-size: 0.88rem; color: var(--text-secondary);">
+          Total Hours: <strong id="modalTotalCalculatedHours" style="color: #059669; font-size: 1rem;">0:00:00</strong>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="btnCancelModal" class="btn btn-outline">Cancel</button>
+          <button id="btnSaveModal" class="btn btn-success">Save & Sync to Google Sheets & Excel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Sheets Settings Modal - Wizard UI -->
+  <div id="googleSettingsModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 660px;">
+      <div class="modal-header">
+        <h3 class="modal-title">📊 Connect Google Sheets</h3>
+        <button id="btnCloseGoogleModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <!-- Connection Status Banner -->
+      <div id="gsWizardStatusBanner" style="padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 8px; background: #f1f5f9; color: #64748b;">
+        <span id="gsWizardStatusDot" style="width:10px;height:10px;border-radius:50%;background:#94a3b8;flex-shrink:0;"></span>
+        <span id="gsWizardStatusText">Checking connection...</span>
+        <a id="gsWizardOpenLink" href="#" target="_blank" style="margin-left:auto; font-size:0.8rem; color: #1e3a8a; text-decoration:none; display:none;">Open Sheet ↗</a>
+      </div>
+
+      <!-- Sheet URL -->
+      <div class="form-field" style="margin-bottom: 16px;">
+        <label style="font-weight:700; color: var(--brand-navy);">Your Google Sheet URL</label>
+        <input type="text" id="settingSheetUrl" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/...">
+        <input type="hidden" id="settingSheetTitle" value="FC TIMES_ FC121-130">
+        <small style="color: var(--text-tertiary); font-size: 0.75rem;">Paste the URL from your browser when the Google Sheet is open.</small>
+      </div>
+
+      <!-- Tab strip for the two auth paths -->
+      <div style="display:flex; border-bottom: 2px solid var(--border); margin-bottom: 20px; gap: 0;">
+        <button id="gsTabOAuth" class="gs-wizard-tab gs-wizard-tab-active" onclick="gsShowTab('oauth')">
+          ✨ Easy: Sign in with Google
+        </button>
+        <button id="gsTabService" class="gs-wizard-tab" onclick="gsShowTab('service')">
+          🔧 Advanced: Service Account
+        </button>
+      </div>
+
+      <!-- OAUTH PATH -->
+      <div id="gsPathOAuth">
+        <div id="gsOAuthConnected" style="display:none; padding:16px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; margin-bottom:16px;">
+          <div style="font-weight:700; color:#15803d; font-size:0.95rem; margin-bottom:4px;">✅ Google Account Connected!</div>
+          <div style="font-size:0.82rem; color:#166534;">Your timesheets will automatically sync to Google Sheets on every submission.</div>
+          <button onclick="gsDisconnect()" class="btn btn-sm" style="margin-top:10px; background:#fee2e2; color:#dc2626; border:1px solid #fca5a5;">Disconnect Google Account</button>
+        </div>
+
+        <div id="gsOAuthSetup">
+          <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:16px;">
+            Connect using your regular Google account — no technical setup required! You'll need to do a one-time Google Cloud setup (only takes ~3 minutes).
+          </p>
+
+          <!-- Step 1 -->
+          <div class="gs-step">
+            <div class="gs-step-num">1</div>
+            <div class="gs-step-body">
+              <strong>Create a free Google Cloud project</strong>
+              <p>Go to <a href="https://console.cloud.google.com/" target="_blank" style="color:#1e3a8a;">console.cloud.google.com</a>, sign in, and click <strong>New Project</strong>. Name it anything (e.g. "AFCR Timesheet").</p>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="gs-step">
+            <div class="gs-step-num">2</div>
+            <div class="gs-step-body">
+              <strong>Enable the Google Sheets API</strong>
+              <p>In your project, go to <strong>APIs & Services → Library</strong>, search for "Google Sheets API", and click <strong>Enable</strong>.</p>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="gs-step">
+            <div class="gs-step-num">3</div>
+            <div class="gs-step-body">
+              <strong>Create OAuth credentials</strong>
+              <p>Go to <strong>APIs & Services → Credentials → Create Credentials → OAuth client ID</strong>. Choose <strong>Desktop App</strong>, click Create, then click <strong>Download JSON</strong>.</p>
+            </div>
+          </div>
+
+          <!-- Step 4: Upload -->
+          <div class="gs-step">
+            <div class="gs-step-num">4</div>
+            <div class="gs-step-body">
+              <strong>Upload the downloaded file here</strong>
+              <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+                <input type="file" id="clientSecretsInput" accept=".json" style="display:none;">
+                <button class="btn btn-outline btn-sm" onclick="document.getElementById('clientSecretsInput').click()">
+                  📂 Upload client_secrets.json
+                </button>
+                <span id="clientSecretsStatus" style="font-size:0.8rem; color:var(--text-secondary); font-weight:600;"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 5: Sign in -->
+          <div class="gs-step">
+            <div class="gs-step-num">5</div>
+            <div class="gs-step-body">
+              <strong>Click Sign in with Google</strong>
+              <p>Your browser will open. Sign in with your Google account and allow access. Come back here when done.</p>
+              <button id="btnSignInGoogle" class="btn btn-primary" style="margin-top:8px;" onclick="gsStartOAuth()">
+                <svg style="width:18px;height:18px;margin-right:6px;" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+                Sign in with Google
+              </button>
+              <div id="gsOAuthWaiting" style="display:none; margin-top:10px; font-size:0.82rem; color:#7c3aed; font-weight:600;">
+                ⏳ Waiting for sign-in... (browser should be open)
+                <button class="btn btn-sm btn-outline" style="margin-left:10px;" onclick="gsPollOAuth()">Check Status</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SERVICE ACCOUNT PATH -->
+      <div id="gsPathService" style="display:none;">
+        <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:16px;">
+          For advanced users — use a Google Service Account (a "robot" Google account) that gets shared on the Sheet.
+        </p>
+        <div class="gs-step">
+          <div class="gs-step-num">1</div>
+          <div class="gs-step-body">
+            <strong>Create a Service Account</strong>
+            <p>In <a href="https://console.cloud.google.com/" target="_blank" style="color:#1e3a8a;">Google Cloud Console</a> → <strong>IAM & Admin → Service Accounts → Create</strong>. Download the JSON key file.</p>
+          </div>
+        </div>
+        <div class="gs-step">
+          <div class="gs-step-num">2</div>
+          <div class="gs-step-body">
+            <strong>Share your Google Sheet</strong>
+            <p>Open your Google Sheet, click <strong>Share</strong>, and add the service account email (looks like <code>name@project.iam.gserviceaccount.com</code>) as an <strong>Editor</strong>.</p>
+          </div>
+        </div>
+        <div class="gs-step">
+          <div class="gs-step-num">3</div>
+          <div class="gs-step-body">
+            <strong>Upload the credentials file</strong>
+            <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+              <input type="file" id="credsFileInput" accept=".json" style="display:none;">
+              <button class="btn btn-outline btn-sm" id="btnUploadCreds">
+                📂 Upload google_credentials.json
+              </button>
+              <span id="credsStatusText" style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Checking key file...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enable sync toggle -->
+      <div class="form-field" style="display:flex; align-items:center; gap:8px; margin-top:16px; border-top:1px solid var(--border); padding-top:14px;">
+        <input type="checkbox" id="settingSyncEnabled" checked style="width:18px;height:18px;">
+        <label for="settingSyncEnabled" style="margin-bottom:0; cursor:pointer; font-size:0.9rem;">Enable automatic sync on every submission</label>
+      </div>
+
+      <!-- Test result box -->
+      <div id="googleTestResultBox" style="margin-top:14px; padding:10px 14px; border-radius:6px; font-size:0.82rem; display:none;"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); margin-top:16px; padding-top:14px;">
+        <button id="btnTestGoogleConnection" class="btn btn-outline">Test Connection</button>
+        <div style="display:flex; gap:10px;">
+          <button id="btnCancelGoogleModal" class="btn btn-outline">Cancel</button>
+          <button id="btnSaveGoogleSettings" class="btn btn-primary">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Hand-Entry Timesheet Modal -->
+  <div id="manualEntryModal" class="modal-backdrop hidden">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">✍️ Hand-Input Worker Timesheet</h3>
+          <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
+            Rapidly log daily timesheet hours. Automatically calculates durations, chains shift times, and syncs to Google Sheets & Excel.
+          </div>
+        </div>
+        <button id="btnCloseManualModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <!-- Timesheet Header -->
+      <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; margin-bottom: 16px; background: var(--surface-alt); padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+        <div class="form-field" style="margin-bottom: 0;">
+          <label>Worker / Employee Name</label>
+          <input type="text" id="manualWorkerName" class="form-control" placeholder="e.g. Israel, Dani, Kelly...">
+          <div class="worker-chips-container" id="manualWorkerChips">
+            <!-- Dynamically populated from worker roster -->
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom: 0;">
+          <label>Date</label>
+          <input type="text" id="manualDate" class="form-control" placeholder="MM/DD/YYYY">
+        </div>
+        <div class="form-field" style="margin-bottom: 0;">
+          <label>Default Food Cart</label>
+          <select id="manualDefaultCart" class="form-control">
+            <!-- Dynamically populated from active cart tabs -->
+          </select>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <strong style="color: var(--brand-navy); font-size: 0.95rem;">Task Line Items</strong>
+        <button type="button" class="btn btn-sm btn-outline" id="btnAddManualRow">+ Add Task Line</button>
+      </div>
+
+      <!-- Line Items Table -->
+      <div class="table-wrapper" style="max-height: 340px; border: 1px solid var(--border); border-radius: 6px;">
+        <table class="data-table" style="font-size: 0.82rem;">
+          <thead style="position: sticky; top: 0; background: var(--brand-navy); color: white; z-index: 2;">
+            <tr>
+              <th style="width: 22%;">Task Description</th>
+              <th style="width: 10%;">Code</th>
+              <th style="width: 13%;">Category</th>
+              <th style="width: 10%;">Type</th>
+              <th style="width: 11%;">Date</th>
+              <th style="width: 9%;">Time In</th>
+              <th style="width: 9%;">Out</th>
+              <th style="width: 8%;">Total</th>
+              <th style="width: 9%;">Cart #</th>
+              <th style="width: 4%;"></th>
+            </tr>
+          </thead>
+          <tbody id="manualRowsTableBody">
+            <!-- Dynamically populated rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-footer-row">
+        <div style="font-size: 0.88rem; color: var(--text-secondary);">
+          Total Hours: <strong id="manualTotalCalculatedHours" style="color: #059669; font-size: 1.05rem;">0:00:00</strong>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="btnCancelManualModal" class="btn btn-outline">Cancel</button>
+          <button id="btnSaveManualModal" class="btn btn-success">Save & Sync to Google Sheets & Excel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Row Modal (Direct Hand-Editing of any entry) -->
+  <div id="editRowModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 640px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">✏️ Edit Timesheet Entry</h3>
+          <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
+            Fix incorrect task description, worker name, hours, or trailer assignment.
+          </div>
+        </div>
+        <button id="btnCloseEditModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <input type="hidden" id="editRowIndex">
+      <input type="hidden" id="editOriginalCart">
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-field">
+          <label>Worker Name</label>
+          <input type="text" id="editWorkerName" class="form-control" placeholder="Worker Name">
+        </div>
+        <div class="form-field">
+          <label>Date</label>
+          <input type="text" id="editDate" class="form-control" placeholder="MM/DD/YYYY">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-field">
+          <label>Cart / Trailer Tab</label>
+          <select id="editCartSelect" class="form-control">
+            <!-- Dynamically populated from active cart tabs -->
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Task Code</label>
+          <input type="text" id="editCode" list="taskCodesDatalist" class="form-control" placeholder="e.g. S6" style="text-transform: uppercase;">
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label>Task Description</label>
+        <input type="text" id="editTaskDesc" class="form-control" placeholder="Task description">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-field">
+          <label>Category</label>
+          <input type="text" id="editCategory" class="form-control" placeholder="Category">
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select id="editType" class="form-control">
+            <option value="Build">Build</option>
+            <option value="Reconditioning">Reconditioning</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: var(--surface-alt); padding: 12px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 16px;">
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Time In</label>
+          <input type="text" id="editTimeIn" class="form-control" placeholder="08:00 AM">
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Time Out</label>
+          <input type="text" id="editTimeOut" class="form-control" placeholder="12:00 PM">
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Task Duration</label>
+          <input type="text" id="editDuration" class="form-control" readonly style="font-weight: 700; color: #059669; background: #ecfdf5;">
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 14px;">
+        <button id="btnCancelEditModal" class="btn btn-outline">Cancel</button>
+        <button id="btnSaveEditRow" class="btn btn-primary">Save Changes to Sheet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Add Row Modal (Single row to active trailer) -->
+  <div id="quickAddRowModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">➕ Add Entry to <span id="quickAddModalCartTitle">FC127</span></h3>
+          <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
+            Quickly add a single task entry to this trailer tab.
+          </div>
+        </div>
+        <button id="btnCloseQuickAddModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px;">
+        <div class="form-field">
+          <label>Worker Name</label>
+          <input type="text" id="quickAddWorkerName" class="form-control" placeholder="e.g. Israel">
+          <div class="worker-chips-container" id="quickAddWorkerChips">
+            <!-- Dynamically populated from worker roster -->
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Date</label>
+          <input type="text" id="quickAddDate" class="form-control" placeholder="MM/DD/YYYY">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px;">
+        <div class="form-field">
+          <label>Code</label>
+          <input type="text" id="quickAddCode" list="taskCodesDatalist" class="form-control" placeholder="e.g. S6" style="text-transform: uppercase;">
+        </div>
+        <div class="form-field">
+          <label>Task Description</label>
+          <input type="text" id="quickAddTask" class="form-control" placeholder="Task description">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-field">
+          <label>Category</label>
+          <input type="text" id="quickAddCategory" class="form-control" value="Misc.">
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select id="quickAddType" class="form-control">
+            <option value="Build" selected>Build</option>
+            <option value="Reconditioning">Reconditioning</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: var(--surface-alt); padding: 12px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 16px;">
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Time In</label>
+          <input type="text" id="quickAddTimeIn" class="form-control" value="08:00 AM">
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Time Out</label>
+          <input type="text" id="quickAddTimeOut" class="form-control" value="09:00 AM">
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Task Total</label>
+          <input type="text" id="quickAddDuration" class="form-control" readonly style="font-weight: 700; color: #059669; background: #ecfdf5;" value="1:00:00">
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 14px;">
+        <button id="btnCancelQuickAddModal" class="btn btn-outline">Cancel</button>
+        <button id="btnSaveQuickAddRow" class="btn btn-success">Add to Sheet & Sync</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Worker Mobile QR Code Modal -->
+  <div id="workerQRModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 480px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="margin: 0 auto;">📱 Worker Mobile Scanner</h3>
+        <button id="btnCloseWorkerQRModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 16px;">
+        Workers scan this code while connected to company Wi-Fi to snap and submit timesheets directly from phone cameras.
+      </p>
+
+      <div class="qr-container" style="margin-bottom: 16px;">
+        <img src="{{ qr_code_data_url }}" alt="AFCR Mobile Scanner QR" class="qr-image" id="qrImgModal">
+        <div class="qr-link-badge" id="qrUrlTextModal" style="margin-top: 12px;">{{ mobile_url }}</div>
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 10px;">
+        <button class="btn btn-outline" id="btnCopyLinkModal">Copy Link</button>
+        <button class="btn btn-primary" id="btnPrintQRModal">🖨️ Print Worker Flyer</button>
+      </div>
+      <small style="color: var(--text-tertiary);">Post flyer near food carts or at the shop check-in desk.</small>
+    </div>
+  </div>
+
+  <!-- Standard Task Codes Reference Modal -->
+  <div id="taskCodesModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 780px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">📖 Standard Task Codes Reference</h3>
+          <div style="font-size: 0.82rem; color: var(--text-secondary);">Lookup table for Manufacturing (MT) and Reconditioning (RT) codes.</div>
+        </div>
+        <button id="btnCloseCodesModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <input type="text" id="codesFilterInput" class="form-control" placeholder="Search by code (e.g. S6, F2), category, or task description...">
+      </div>
+
+      <div style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px;">
+        <table class="data-table" style="font-size: 0.82rem;">
+          <thead style="position: sticky; top: 0; background: var(--brand-navy); color: white;">
+            <tr>
+              <th style="width: 12%;">Code</th>
+              <th style="width: 15%;">Type</th>
+              <th style="width: 25%;">Category</th>
+              <th>Task Description</th>
+            </tr>
+          </thead>
+          <tbody id="codesTableBody">
+            <!-- Populated from codes.json -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage Team & Trailers Modal -->
+  <div id="teamTrailersModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">👥 Team Roster & Trailer Tabs</h3>
+          <div style="font-size: 0.82rem; color: var(--text-secondary);">Manage technicians for OCR matching and configure active food trailer tabs.</div>
+        </div>
+        <button id="btnCloseRosterModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <!-- Tabs Strip: Team vs Trailers -->
+      <div style="display: flex; border-bottom: 2px solid var(--border); margin-bottom: 16px;">
+        <button id="tabRosterWorkers" class="gs-wizard-tab gs-wizard-tab-active" style="padding: 8px 16px; border: none; background: none; font-weight: 700; cursor: pointer;">
+          👷 Worker Roster (<span id="workerCountBadge">0</span>)
+        </button>
+        <button id="tabRosterTrailers" class="gs-wizard-tab" style="padding: 8px 16px; border: none; background: none; font-weight: 600; color: var(--text-secondary); cursor: pointer;">
+          🚚 Trailer Tabs (<span id="trailerCountBadge">0</span>)
+        </button>
+      </div>
+
+      <!-- Pane 1: Worker Roster -->
+      <div id="paneWorkers">
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+          <input type="text" id="inputNewWorkerName" class="form-control" placeholder="Enter employee name (e.g. Elijah, Carlos)..." style="flex: 1;">
+          <button class="btn btn-primary" id="btnAddWorkerBtn">+ Add Worker</button>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Active Technicians (Click × to remove):</div>
+        <div id="rosterBadgesList" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 240px; overflow-y: auto; padding: 10px; background: var(--surface-alt); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Pane 2: Trailer Tabs -->
+      <div id="paneTrailers" style="display: none;">
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+          <input type="text" id="inputNewTrailerName" class="form-control" placeholder="Enter trailer name (e.g. FC131, Special Build)..." style="flex: 1;">
+          <button class="btn btn-primary" id="btnAddTrailerBtn">+ Add Trailer</button>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Configured Trailers (Synced with Excel & Google Sheets):</div>
+        <div id="trailerBadgesList" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 240px; overflow-y: auto; padding: 10px; background: var(--surface-alt); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; border-top: 1px solid var(--border); margin-top: 20px; padding-top: 14px;">
+        <button id="btnCloseRosterModalBottom" class="btn btn-outline">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feedback / Notes Modal -->
+  <div id="feedbackModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 560px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.3rem;">💬</span>
+          <h3 class="modal-title">Send Notes or Feedback to Dale</h3>
+        </div>
+        <button id="btnCloseFeedbackModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div style="padding: 18px 24px;">
+        <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+          Leave any notes, questions, or updates for Dale. Sending this opens an email directly to <strong>dalefaubion@gmail.com</strong> and also saves a local log copy on the server.
+        </p>
+
+        <div class="form-field" style="margin-bottom: 14px;">
+          <label style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary); margin-bottom: 4px; display: block;">Your Name</label>
+          <input type="text" id="feedbackSender" class="form-control" value="Elijah" placeholder="Your name (e.g. Elijah)">
+        </div>
+
+        <div class="form-field" style="margin-bottom: 14px;">
+          <label style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary); margin-bottom: 4px; display: block;">Subject</label>
+          <input type="text" id="feedbackSubject" class="form-control" value="Timesheet & Cart Updates" placeholder="Brief subject...">
+        </div>
+
+        <div class="form-field" style="margin-bottom: 14px;">
+          <label style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary); margin-bottom: 4px; display: block;">Notes / Feedback</label>
+          <textarea id="feedbackMessage" class="form-control" rows="5" placeholder="Write your notes here... (e.g., questions on cart hours, OCR corrections, or general updates)"></textarea>
+        </div>
+
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: #1e40af;">
+          💡 <strong>Tip:</strong> Clicking <em>Send Email</em> will launch your email composer ready to send. A backup copy is always saved locally on this machine so nothing is ever lost.
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding: 14px 24px;">
+        <button id="btnCancelFeedbackModal" class="btn btn-outline">Cancel</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="btnSaveFeedbackOnly" class="btn btn-outline" style="border-color: #cbd5e1;">💾 Save Note Only</button>
+          <button id="btnSendFeedbackEmail" class="btn btn-primary" style="background: #2563eb; border-color: #1d4ed8;">✉️ Send Email to Dale</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer"></div>
+
+
+  <script src="/static/js/dashboard.js?v=20261028_modalnestfix"></script>
+  <script>
+    // ---- Google Sheets Wizard JS ----
+    function gsShowTab(tab) {
+      document.getElementById('gsPathOAuth').style.display = tab === 'oauth' ? '' : 'none';
+      document.getElementById('gsPathService').style.display = tab === 'service' ? '' : 'none';
+      document.getElementById('gsTabOAuth').classList.toggle('gs-wizard-tab-active', tab === 'oauth');
+      document.getElementById('gsTabService').classList.toggle('gs-wizard-tab-active', tab === 'service');
+    }
+
+    function gsUpdateStatusBanner(connected, text, url) {
+      const dot = document.getElementById('gsWizardStatusDot');
+      const txt = document.getElementById('gsWizardStatusText');
+      const link = document.getElementById('gsWizardOpenLink');
+      dot.style.background = connected ? '#22c55e' : '#ef4444';
+      txt.textContent = text;
+      if (url) { link.href = url; link.style.display = ''; }
+      else { link.style.display = 'none'; }
+    }
+
+    function gsLoadWizardState() {
+      fetch('/api/google-sheets/status').then(r => r.json()).then(d => {
+        const s = d.settings || {};
+        document.getElementById('settingSheetUrl').value = s.google_sheet_id_or_url || '';
+        document.getElementById('settingSyncEnabled').checked = s.google_sheets_enabled !== false;
+        if (d.has_oauth_token) {
+          document.getElementById('gsOAuthConnected').style.display = '';
+          document.getElementById('gsOAuthSetup').style.display = 'none';
+        } else {
+          document.getElementById('gsOAuthConnected').style.display = 'none';
+          document.getElementById('gsOAuthSetup').style.display = '';
+        }
+        if (d.has_client_secrets) {
+          document.getElementById('clientSecretsStatus').textContent = '✅ client_secrets.json ready';
+        }
+        if (d.has_service_account) {
+          document.getElementById('credsStatusText').textContent = '✅ google_credentials.json loaded';
+        }
+        if (d.connected) {
+          gsUpdateStatusBanner(true, '✅ Connected to: ' + (d.title || 'Google Sheets'), d.url);
+        } else if (d.auth_method === 'none') {
+          gsUpdateStatusBanner(false, 'Not connected — set up an auth method below.');
+        } else {
+          gsUpdateStatusBanner(false, 'Auth found but sheet not connected yet. Paste your Sheet URL and test.');
+        }
+      }).catch(() => gsUpdateStatusBanner(false, 'Could not check status.'));
+    }
+
+    function gsStartOAuth() {
+      document.getElementById('gsOAuthWaiting').style.display = '';
+      document.getElementById('btnSignInGoogle').disabled = true;
+      fetch('/api/google-sheets/oauth-start', {method: 'POST'})
+        .then(r => r.json()).then(d => {
+          if (d.status === 'error') {
+            alert('Setup Needed: ' + d.message);
+            document.getElementById('gsOAuthWaiting').style.display = 'none';
+            document.getElementById('btnSignInGoogle').disabled = false;
+            return;
+          }
+          // Poll automatically every 3 seconds
+          let poll = setInterval(() => {
+            fetch('/api/google-sheets/oauth-status').then(r => r.json()).then(s => {
+              if (s.status === 'connected') {
+                clearInterval(poll);
+                gsLoadWizardState();
+                document.getElementById('gsOAuthWaiting').style.display = 'none';
+                document.getElementById('btnSignInGoogle').disabled = false;
+              }
+            });
+          }, 3000);
+          // Stop polling after 3 min
+          setTimeout(() => clearInterval(poll), 180000);
+        }).catch(err => {
+          alert('Network or server error starting Google Sign-in: ' + err.message);
+          document.getElementById('gsOAuthWaiting').style.display = 'none';
+          document.getElementById('btnSignInGoogle').disabled = false;
+        });
+    }
+
+    function gsPollOAuth() {
+      fetch('/api/google-sheets/oauth-status').then(r => r.json()).then(s => {
+        if (s.status === 'connected') { gsLoadWizardState(); document.getElementById('gsOAuthWaiting').style.display = 'none'; }
+        else alert('Not connected yet. Make sure you signed in and approved in the browser.');
+      });
+    }
+
+    function gsDisconnect() {
+      if (!confirm('Disconnect your Google account? You can reconnect anytime.')) return;
+      fetch('/api/google-sheets/oauth-disconnect', {method: 'POST'}).then(() => gsLoadWizardState());
+    }
+
+    // Client secrets upload
+    document.addEventListener('DOMContentLoaded', () => {
+      const csInput = document.getElementById('clientSecretsInput');
+      if (csInput) csInput.addEventListener('change', function() {
+        const fd = new FormData();
+        fd.append('file', this.files[0]);
+        fetch('/api/google-sheets/upload-client-secrets', {method: 'POST', body: fd})
+          .then(r => r.json()).then(d => {
+            document.getElementById('clientSecretsStatus').textContent = d.status === 'success' ? '✅ ' + d.message : '❌ ' + d.message;
+          });
+      });
+    });
+
+    // Open wizard and load state
+    const _origOpenGS = window.openGoogleSettingsModal;
+    document.addEventListener('DOMContentLoaded', () => {
+      const btns = [document.getElementById('btnConfigureGoogleSheets'), document.getElementById('btnOpenGoogleSettings')];
+      btns.forEach(btn => { if (btn) btn.addEventListener('click', () => { gsLoadWizardState(); }); });
+    });
+  </script>
+  <style>
+    .gs-wizard-tab { padding: 9px 18px; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); margin-bottom: -2px; transition: all 0.2s; }
+    .gs-wizard-tab:hover { color: var(--brand-navy); }
+    .gs-wizard-tab-active { color: var(--brand-navy) !important; border-bottom-color: var(--brand-blue) !important; }
+    .gs-step { display: flex; gap: 14px; margin-bottom: 18px; align-items: flex-start; }
+    .gs-step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--brand-navy); color: white; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .gs-step-body { flex: 1; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; }
+    .gs-step-body strong { color: var(--brand-navy); display: block; margin-bottom: 3px; font-size: 0.9rem; }
+    .gs-step-body p { margin: 0; }
+    .gs-step-body a { color: #1e3a8a; }
+  </style>
+</body>
+</html>
