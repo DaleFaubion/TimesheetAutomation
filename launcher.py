@@ -46,7 +46,9 @@ def verify_dependencies():
                     "https://aka.ms/vs/17/release/vc_redist.x64.exe"
                 ], check=False)
                 if installer.exists():
-                    subprocess.run([str(installer), "/install", "/quiet", "/norestart"], check=False)
+                    subprocess.run(["powershell", "-NoProfile", "-Command", f"Start-Process -FilePath '{installer}' -ArgumentList '/install /passive /norestart' -Verb RunAs -Wait"], check=False)
+                    if not (sys32 / "vcruntime140_1.dll").exists():
+                        subprocess.run([str(installer), "/install", "/passive", "/norestart"], check=False)
                     try:
                         installer.unlink()
                     except Exception:

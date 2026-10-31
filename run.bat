@@ -102,10 +102,16 @@ exit /b 1
 :run_app
 :: Check for Microsoft Visual C++ Redistributable (required by onnxruntime for rapidocr)
 if not exist "%SystemRoot%\System32\vcruntime140_1.dll" (
-    echo [SETUP] Installing Microsoft Visual C++ Runtime (required by ONNX OCR)...
+    echo ======================================================================
+    echo   [SETUP] Installing Microsoft Visual C++ Runtime for AI OCR engine...
+    echo   (If Windows asks 'Do you want to allow this app...', click YES)
+    echo ======================================================================
     curl.exe -f -s -L -o "%TEMP%\vc_redist.x64.exe" "https://aka.ms/vs/17/release/vc_redist.x64.exe" 2>nul
     if exist "%TEMP%\vc_redist.x64.exe" (
-        "%TEMP%\vc_redist.x64.exe" /install /quiet /norestart
+        powershell -NoProfile -Command "Start-Process -FilePath '%TEMP%\vc_redist.x64.exe' -ArgumentList '/install /passive /norestart' -Verb RunAs -Wait" 2>nul
+        if not exist "%SystemRoot%\System32\vcruntime140_1.dll" (
+            "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
+        )
         del "%TEMP%\vc_redist.x64.exe" >nul 2>nul
     )
 )
