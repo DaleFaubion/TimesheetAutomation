@@ -35,6 +35,25 @@ def check_git_updates():
 
 def verify_dependencies():
     """Checks requirements.txt and installs missing packages."""
+    if sys.platform == "win32":
+        sys32 = Path(os.environ.get("SystemRoot", "C:\\Windows")) / "System32"
+        if not (sys32 / "vcruntime140_1.dll").exists():
+            print("[SETUP] Installing required Microsoft Visual C++ Runtime for ONNX OCR...")
+            installer = Path(os.environ.get("TEMP", "C:\\Temp")) / "vc_redist.x64.exe"
+            try:
+                subprocess.run([
+                    "curl.exe", "-f", "-s", "-L", "-o", str(installer),
+                    "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+                ], check=False)
+                if installer.exists():
+                    subprocess.run([str(installer), "/install", "/quiet", "/norestart"], check=False)
+                    try:
+                        installer.unlink()
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"[WARN] Visual C++ setup notice: {e}")
+
     req_file = BASE_DIR / "requirements.txt"
     if req_file.exists():
         print("[CHECK] Verifying application dependencies...")
