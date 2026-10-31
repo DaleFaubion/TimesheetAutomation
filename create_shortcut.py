@@ -6,7 +6,9 @@ import config
 def create_desktop_shortcut():
     desktop_dir = config.get_desktop_dir()
     project_dir = Path(__file__).resolve().parent
-    bat_target = project_dir / "run.bat"
+    bat_target = project_dir / "RunWindows.bat"
+    if not bat_target.exists():
+        bat_target = project_dir / "run.bat"
     shortcut_path = desktop_dir / "AFCR Timesheet OCR.lnk"
 
     ico_path = project_dir / "static" / "images" / "afcr_logo.ico"
