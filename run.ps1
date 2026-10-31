@@ -68,8 +68,19 @@ if (-not $pyCmd) {
 if (-not $pyCmd) {
     Write-Host "[INFO] Python is not installed. Downloading Python 3.12..." -ForegroundColor Yellow
     $installer = "$env:TEMP\python_installer.exe"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    (New-Object System.Net.WebClient).DownloadFile("https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe", $installer)
+    
+    # Try native curl.exe first
+    try {
+        & curl.exe -f -s -L -o $installer "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe"
+    } catch {}
+
+    # Fallback to Invoke-WebRequest
+    if (-not (Test-Path -LiteralPath $installer)) {
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]'Tls12,Tls13'
+            Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe" -OutFile $installer -UserAgent "Mozilla/5.0"
+        } catch {}
+    }
     Write-Host "[INFO] Installing Python silently... Please wait 30-60 seconds..." -ForegroundColor Yellow
     Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0" -Wait
     Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue

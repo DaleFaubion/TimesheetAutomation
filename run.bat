@@ -65,7 +65,13 @@ echo ======================================================================
 echo.
 echo Downloading official 64-bit Python installer from python.org...
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe', '$env:TEMP\python_installer.exe')"
+:: Try curl.exe first (native in Windows 10 & 11, robust against proxy and TLS restrictions)
+curl.exe -f -s -L -o "%TEMP%\python_installer.exe" "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe" 2>nul
+
+:: Fallback to PowerShell Invoke-WebRequest if curl.exe is unavailable
+if not exist "%TEMP%\python_installer.exe" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]'Tls12,Tls13'; try { (New-Object Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe', '$env:TEMP\python_installer.exe') } catch { Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe' -OutFile '$env:TEMP\python_installer.exe' -UserAgent 'Mozilla/5.0' }" 2>nul
+)
 
 if exist "%TEMP%\python_installer.exe" (
     echo.
