@@ -50,18 +50,27 @@ def backup_user_settings() -> dict:
     temp_backup = temp_dir / "afcr_settings_backup.json"
 
     saved_data = {}
-    if settings_file.exists():
+    # Read from local_settings_file first (where private keys live), falling back to settings_file
+    if local_settings_file.exists():
+        try:
+            with open(local_settings_file, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+        except Exception:
+            pass
+    if not saved_data and settings_file.exists():
         try:
             with open(settings_file, "r", encoding="utf-8") as f:
                 saved_data = json.load(f)
+        except Exception:
+            pass
+
+    if saved_data:
+        try:
             with open(local_settings_file, "w", encoding="utf-8") as f:
                 json.dump(saved_data, f, indent=2)
-            try:
-                temp_dir.mkdir(parents=True, exist_ok=True)
-                with open(temp_backup, "w", encoding="utf-8") as f:
-                    json.dump(saved_data, f, indent=2)
-            except Exception:
-                pass
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            with open(temp_backup, "w", encoding="utf-8") as f:
+                json.dump(saved_data, f, indent=2)
         except Exception as e:
             print(f"[UPDATE] Warning during settings backup: {e}")
 
@@ -113,18 +122,23 @@ def restore_user_settings(saved_data: dict = None):
             pass
 
     current_data.update(backup_data)
-    try:
-        with open(settings_file, "w", encoding="utf-8") as f:
-            json.dump(current_data, f, indent=2)
-    except Exception as e:
-        print(f"[UPDATE] Warning restoring settings.json: {e}")
 
-    # Also keep settings.local.json in sync
+    # 1. Save full config with private keys to gitignored local file
     try:
         with open(local_settings_file, "w", encoding="utf-8") as f:
             json.dump(current_data, f, indent=2)
     except Exception:
         pass
+
+    # 2. Save public config to settings.json with private key sanitized
+    sanitized_data = dict(current_data)
+    if "gemini_api_key" in sanitized_data:
+        sanitized_data["gemini_api_key"] = ""
+    try:
+        with open(settings_file, "w", encoding="utf-8") as f:
+            json.dump(sanitized_data, f, indent=2)
+    except Exception as e:
+        print(f"[UPDATE] Warning restoring settings.json: {e}")
 
 def check_for_updates() -> dict:
     """

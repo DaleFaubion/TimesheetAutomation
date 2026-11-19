@@ -129,17 +129,24 @@ def save_settings(new_settings: dict) -> dict:
     import json
     cur = get_settings()
     cur.update(new_settings)
-    # Save to both settings.json and local uncommitted file
-    try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(cur, f, indent=2)
-    except Exception:
-        pass
+
+    # 1. Save full configuration (including private API key) to gitignored local file
     try:
         with open(LOCAL_SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(cur, f, indent=2)
     except Exception:
         pass
+
+    # 2. Save public/general configuration to settings.json, keeping private API key sanitized
+    public_settings = dict(cur)
+    if "gemini_api_key" in public_settings:
+        public_settings["gemini_api_key"] = ""
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(public_settings, f, indent=2)
+    except Exception:
+        pass
+
     cur["has_credentials"] = GOOGLE_CREDENTIALS_PATH.exists()
     return cur
 
