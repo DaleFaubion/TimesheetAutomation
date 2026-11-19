@@ -676,12 +676,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function confirmDeleteRow(row) {
-    const msg = `Are you sure you want to delete this task entry?\n\n• Worker: ${row.name || 'Unknown'}\n• Task: ${row.task || '-'}\n• Time: ${row.time_in} - ${row.time_out}\n\nThis will remove the line from Excel and Google Sheets.`;
+    const msg = `Are you sure you want to delete this task entry?\n\n• Worker: ${row.name || 'Unknown'}\n• Task: ${row.task || '-'}\n• Time: ${row.time_in || ''} - ${row.time_out || ''}\n\nThis will remove the line from Excel, CSV log, and Google Sheets.`;
     if (!confirm(msg)) return;
 
     try {
       const res = await fetch(`/api/cart/${encodeURIComponent(activeCartTab)}/row/${row.row_idx}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(row)
       });
       const data = await res.json();
       if (res.ok && data.status === 'success') {
@@ -692,8 +694,51 @@ document.addEventListener('DOMContentLoaded', () => {
         alert(data.message || 'Could not delete entry.');
       }
     } catch (e) {
-      alert('Network error while deleting entry.');
+      alert('Network error while deleting entry: ' + e.message);
     }
+  }
+
+  // Clear all data for current cart selection
+  const btnClearCartData = document.getElementById('btnClearCartData');
+  if (btnClearCartData) {
+    btnClearCartData.addEventListener('click', async () => {
+      if (!activeCartTab) return;
+      const confirmed = confirm(
+        `⚠️ DELETE ALL ENTRIES FOR ${activeCartTab}?\n\n` +
+        `This will delete all logged tasks and hours in the "${activeCartTab}" tab across Excel, CSV audit log, and Google Sheets.\n\n` +
+        `The tab itself will remain with clean headers ready for fresh entries.\n\n` +
+        `Click OK to proceed with deleting all data for ${activeCartTab}.`
+      );
+      if (!confirmed) return;
+
+      btnClearCartData.disabled = true;
+      btnClearCartData.textContent = 'Clearing...';
+
+      try {
+        const resp = await fetch(`/api/cart/${encodeURIComponent(activeCartTab)}/clear`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+          showToast(`✓ Cleared all entries for ${activeCartTab}`);
+          loadCartSummaries();
+          loadCartData(activeCartTab);
+        } else {
+          alert("❌ Failed to clear cart data: " + (data.message || "Unknown error"));
+        }
+      } catch (err) {
+        alert("❌ Network error: " + err.message);
+      } finally {
+        btnClearCartData.disabled = false;
+        btnClearCartData.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Clear Cart Data
+        `;
+      }
+    });
   }
 
   // ==========================================
@@ -1385,6 +1430,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ocrProgressTimer) clearInterval(ocrProgressTimer);
     if (ocrProgressPollTimer) clearInterval(ocrProgressPollTimer);
 
+    let displayRemaining = estimatedSecs;
+    let targetRemaining = estimatedSecs;
+
+    // Single unified stable timer running every 1000ms (prevents timer flashing/jumping)
     ocrProgressTimer = setInterval(() => {
       const elapsed = (Date.now() - startTime) / 1000;
       const fill = document.getElementById('ocrProgressFill');
@@ -1398,22 +1447,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!fill) return;
 
-      // Realistic smooth curve that scales accurately with estimatedSecs
-      const timeRatio = Math.min(1.0, elapsed / Math.max(1, estimatedSecs));
-      let timePct = Math.round(6 + (88 * (1 - Math.exp(-2.5 * timeRatio))));
-
+      const timeRatio = Math.min(1.0, elapsed / Math.max(1, targetRemaining + elapsed));
+      let timePct = Math.round(6 + (88 * (1 - Math.exp(-2.2 * timeRatio))));
       let displayPct = Math.max(timePct, currentServerPercent);
       displayPct = Math.min(96, Math.max(6, displayPct));
 
       fill.style.width = `${displayPct}%`;
       if (pctBadge) pctBadge.textContent = `${displayPct}%`;
-      if (remEl) remEl.textContent = `~${formatTimeDisplay(currentRemaining)}`;
       if (elapEl) elapEl.textContent = formatTimeDisplay(elapsed);
 
-      // Countdown remaining time smoothly
-      if (currentRemaining > 3) {
-        currentRemaining = Math.max(3, Math.round(estimatedSecs - elapsed));
+      // Smooth monotonic countdown without flashing
+      if (displayRemaining > 2) {
+        if (targetRemaining < displayRemaining) {
+          displayRemaining = Math.max(targetRemaining, displayRemaining - 1);
+        } else if (targetRemaining > displayRemaining + 8) {
+          // If server reports more pages left, smoothly adjust by at most +2s/sec
+          displayRemaining += 2;
+        } else {
+          displayRemaining = Math.max(2, displayRemaining - 1);
+        }
       }
+      if (remEl) remEl.textContent = `~${formatTimeDisplay(displayRemaining)}`;
 
       if (displayPct >= 15 && step1 && !step1.classList.contains('completed')) {
         step1.classList.remove('active');
@@ -1430,9 +1484,9 @@ document.addEventListener('DOMContentLoaded', () => {
         step3.classList.add('completed');
         if (step4) step4.classList.add('active');
       }
-    }, 250);
+    }, 1000);
 
-    // Live backend page progress polling every 1200ms
+    // Live backend page progress polling every 1000ms
     ocrProgressPollTimer = setInterval(async () => {
       try {
         const res = await fetch('/api/scan/progress');
@@ -1446,16 +1500,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (prog.percent > 0) {
               currentServerPercent = prog.percent;
             }
-            if (prog.total_pages && prog.total_pages > 1 && prog.current_page > 0) {
-              const elapsed = (Date.now() - startTime) / 1000;
-              const avgPerPage = elapsed / Math.max(0.7, prog.current_page - 0.2);
-              const pagesLeft = prog.total_pages - prog.current_page + 0.2;
-              currentRemaining = Math.max(3, Math.round(avgPerPage * pagesLeft));
+            if (prog.eta_secs && prog.eta_secs > 0) {
+              targetRemaining = prog.eta_secs;
             }
           }
         }
       } catch (err) {}
-    }, 1200);
+    }, 1000);
   }
 
   function stopOCRProgress() {
@@ -1659,7 +1710,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderModalRows(rows);
     recalcModalTotal();
+    const partialBanner = document.getElementById('modalPartialWarning');
+    const partialText = document.getElementById('modalPartialWarningText');
+    if (partialBanner && res.partial_count > 0) {
+      partialBanner.style.display = 'flex';
+      if (partialText) partialText.textContent = `⚠️ ${res.partial_count} entries are partially filled. Please verify or complete highlighted fields before saving.`;
+    } else if (partialBanner) {
+      partialBanner.style.display = 'none';
+    }
+    if (res.is_new_cart) {
+      showToast(`ℹ️ Detected new Food Cart tab: ${res.cart_id}. Automatically added to system.`, 'info');
+      if (typeof loadCartTabs === 'function') loadCartTabs();
+    }
     desktopVerifyModal.classList.remove('hidden');
+
+    // Auto-focus first input for instant keyboard flow
+    setTimeout(() => {
+      const firstInput = desktopVerifyModal.querySelector('.modal-task-row input.row-timein, .modal-task-row input.row-task, #modalWorkerName');
+      if (firstInput) firstInput.focus();
+    }, 60);
   }
 
   function renderModalRows(rows) {
@@ -1674,6 +1743,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const defaultCart = r.cart_id || (activeCartTab !== '__ALL__' ? activeCartTab : "FC127");
     const defaultType = r.type || "Build";
     const initialDuration = (r.time_in && r.time_out) ? calculateDuration(r.time_in, r.time_out) : (r.duration || '0:00:00');
+    if (r.is_partial) {
+      tr.style.backgroundColor = '#fffbeb';
+      tr.style.borderLeft = '4px solid #f59e0b';
+    }
 
     tr.innerHTML = `
       <td><input type="text" class="row-input-compact row-task" value="${escapeHtml(r.task || '')}" placeholder="Task description"></td>
@@ -1682,6 +1755,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <td>
         <select class="row-input-compact row-type">
           <option value="Build" ${defaultType === 'Build' ? 'selected' : ''}>Build</option>
+          <option value="Outfitting" ${defaultType === 'Outfitting' ? 'selected' : ''}>Outfitting</option>
           <option value="Reconditioning" ${defaultType === 'Reconditioning' ? 'selected' : ''}>Reconditioning</option>
         </select>
       </td>
@@ -1696,7 +1770,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (codeInput) {
       codeInput.addEventListener('change', () => {
         const val = codeInput.value.trim().toUpperCase();
-        const allCodes = [...(codesDatabase.mt_codes || []), ...(codesDatabase.rt_codes || [])];
+        const allCodes = [...(codesDatabase.mt_codes || []), ...(codesDatabase.ot_codes || []), ...(codesDatabase.rt_codes || [])];
         const match = allCodes.find(c => c.code.toUpperCase() === val);
         if (match) {
           const catEl = tr.querySelector('.row-category');
@@ -1806,6 +1880,109 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function closeModal() {
     if (desktopVerifyModal) desktopVerifyModal.classList.add('hidden');
+  }
+
+  // 1-Click Partial Fill & Clean Actions
+  const btnAutoFillPartial = document.getElementById('btnAutoFillPartial');
+  const btnRemoveIncomplete = document.getElementById('btnRemoveIncomplete');
+
+  if (btnAutoFillPartial) {
+    btnAutoFillPartial.addEventListener('click', () => {
+      const trs = modalRowsTableBody ? Array.from(modalRowsTableBody.querySelectorAll('.modal-task-row')) : [];
+      let fixed = 0;
+      trs.forEach((tr, idx) => {
+        const tinEl = tr.querySelector('.row-timein');
+        const toutEl = tr.querySelector('.row-timeout');
+        const durEl = tr.querySelector('.row-duration');
+        let tin = tinEl ? tinEl.value.trim() : '';
+        let tout = toutEl ? toutEl.value.trim() : '';
+
+        if (tin && !tout) {
+          if (idx + 1 < trs.length) {
+            const nextIn = trs[idx + 1].querySelector('.row-timein');
+            if (nextIn && nextIn.value.trim()) tout = nextIn.value.trim();
+          }
+          if (!tout) tout = '12:00 PM';
+          if (toutEl) toutEl.value = tout;
+          fixed++;
+        }
+        if (!tin && tout) {
+          if (idx > 0) {
+            const prevOut = trs[idx - 1].querySelector('.row-timeout');
+            if (prevOut && prevOut.value.trim()) tin = prevOut.value.trim();
+          }
+          if (!tin) tin = '08:00 AM';
+          if (tinEl) tinEl.value = tin;
+          fixed++;
+        }
+        if (tin && tout && durEl) {
+          durEl.value = calculateDuration(tin, tout);
+        }
+        tr.style.backgroundColor = '';
+        tr.style.borderLeft = '';
+      });
+      recalcModalTotal();
+      const partialBanner = document.getElementById('modalPartialWarning');
+      if (partialBanner) partialBanner.style.display = 'none';
+      showToast(`✓ Auto-filled ${fixed} partial time entries!`);
+    });
+  }
+
+  if (btnRemoveIncomplete) {
+    btnRemoveIncomplete.addEventListener('click', () => {
+      const trs = modalRowsTableBody ? Array.from(modalRowsTableBody.querySelectorAll('.modal-task-row')) : [];
+      let removed = 0;
+      trs.forEach(tr => {
+        const tinEl = tr.querySelector('.row-timein');
+        const toutEl = tr.querySelector('.row-timeout');
+        const tin = tinEl ? tinEl.value.trim() : '';
+        const tout = toutEl ? toutEl.value.trim() : '';
+        if (!tin || !tout) {
+          tr.remove();
+          removed++;
+        }
+      });
+      recalcModalTotal();
+      const partialBanner = document.getElementById('modalPartialWarning');
+      if (partialBanner) partialBanner.style.display = 'none';
+      showToast(`Removed ${removed} incomplete rows.`);
+    });
+  }
+
+  // App Version & Auto-Update Handler
+  const appVersionBadge = document.getElementById('appVersionBadge');
+  const updateAvailablePill = document.getElementById('updateAvailablePill');
+
+  async function checkAppUpdates() {
+    try {
+      const res = await fetch('/api/app/check-update');
+      const data = await res.json();
+      if (data && data.is_update_available) {
+        if (updateAvailablePill) updateAvailablePill.style.display = 'inline-block';
+        if (appVersionBadge) {
+          appVersionBadge.title = `Update available: v${data.latest_version}. Click to update!`;
+        }
+      }
+    } catch (e) {
+      console.log('Update check notice:', e);
+    }
+  }
+  setTimeout(checkAppUpdates, 2000);
+
+  if (appVersionBadge) {
+    appVersionBadge.addEventListener('click', async () => {
+      const res = await fetch('/api/app/check-update');
+      const data = await res.json();
+      if (data && data.is_update_available) {
+        if (confirm(`New update available (v${data.latest_version})!\n\n${data.release_notes || 'Click OK to update now.'}`)) {
+          const upRes = await fetch('/api/app/update', { method: 'POST' });
+          const upData = await upRes.json();
+          alert(upData.message || 'Update completed.');
+        }
+      } else {
+        alert(`AFCR Timesheet v${data.current_version || '2.1.0'} is up to date!`);
+      }
+    });
   }
 
   if (btnCloseModal) btnCloseModal.addEventListener('click', closeModal);
@@ -2570,3 +2747,255 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+
+  // ==========================================
+  // Clear All Test Entries Handler (Req 1)
+  // ==========================================
+  const btnClearAllEntries = document.getElementById('btnClearAllEntries');
+  if (btnClearAllEntries) {
+    btnClearAllEntries.addEventListener('click', async () => {
+      const confirmed = confirm(
+        "⚠️ ARE YOU SURE YOU WANT TO CLEAR ALL TEST ENTRIES?\n\n" +
+        "This will clear all logged timesheet rows across all cart tabs so you can start completely fresh with production entries.\n\n" +
+        "A timestamped backup of your current workbook will be saved automatically to AFCR_Scans/Exports/.\n\n" +
+        "Click OK to proceed with clearing all test data."
+      );
+      if (!confirmed) return;
+
+      btnClearAllEntries.disabled = true;
+      btnClearAllEntries.textContent = "Clearing & Backing Up...";
+
+      try {
+        const resp = await fetch('/api/admin/clear-entries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+          alert(
+            `✅ SUCCESS!\n\nAll timesheet rows cleared across ${data.cleared_tabs ? data.cleared_tabs.length : 'all'} cart tabs.\n\n` +
+            `Safety backup created:\n${data.backup_name || 'FC_TIMES_backup.xlsx'}\n(Saved in AFCR_Scans/Exports/)`
+          );
+          if (typeof loadCartTabs === 'function') loadCartTabs();
+          if (typeof loadHistory === 'function') loadHistory();
+          if (typeof loadCartData === 'function' && activeCartTab) {
+            loadCartData(activeCartTab);
+          }
+        } else {
+          alert("❌ Error: " + (data.message || "Failed to clear entries."));
+        }
+      } catch (err) {
+        alert("❌ Network Error: " + err.message);
+      } finally {
+        btnClearAllEntries.disabled = false;
+        btnClearAllEntries.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Clear All Test Entries (Start Fresh)
+        `;
+      }
+    });
+  }
+
+  // ==========================================
+  // AI Vision & OCR Settings Modal Logic
+  // ==========================================
+  const aiSettingsModal = document.getElementById('aiSettingsModal');
+  const btnOpenAiSettings = document.getElementById('btnOpenAiSettings');
+  const scanAiBadge = document.getElementById('scanAiBadge');
+  const btnCloseAiModal = document.getElementById('btnCloseAiModal');
+  const btnCloseAiModalBtn = document.getElementById('btnCloseAiModalBtn');
+  const engineCloud = document.getElementById('engineCloud');
+  const engineLocal = document.getElementById('engineLocal');
+  const lblEngineCloud = document.getElementById('lblEngineCloud');
+  const lblEngineLocal = document.getElementById('lblEngineLocal');
+  const geminiConfigSection = document.getElementById('geminiConfigSection');
+  const inputGeminiApiKey = document.getElementById('inputGeminiApiKey');
+  const btnToggleApiKeyVisibility = document.getElementById('btnToggleApiKeyVisibility');
+  const selectGeminiModel = document.getElementById('selectGeminiModel');
+  const btnTestGeminiKey = document.getElementById('btnTestGeminiKey');
+  const aiTestFeedback = document.getElementById('aiTestFeedback');
+  const btnSaveAiSettings = document.getElementById('btnSaveAiSettings');
+
+  function updateEngineRadioVisuals() {
+    if (engineCloud && engineCloud.checked) {
+      if (lblEngineCloud) {
+        lblEngineCloud.style.borderColor = '#3b82f6';
+        lblEngineCloud.style.background = '#eff6ff';
+      }
+      if (lblEngineLocal) {
+        lblEngineLocal.style.borderColor = '#d1d5db';
+        lblEngineLocal.style.background = '#f9fafb';
+      }
+      if (geminiConfigSection) geminiConfigSection.style.opacity = '1';
+    } else {
+      if (lblEngineLocal) {
+        lblEngineLocal.style.borderColor = '#3b82f6';
+        lblEngineLocal.style.background = '#eff6ff';
+      }
+      if (lblEngineCloud) {
+        lblEngineCloud.style.borderColor = '#d1d5db';
+        lblEngineCloud.style.background = '#f9fafb';
+      }
+    }
+  }
+
+  if (engineCloud) engineCloud.addEventListener('change', updateEngineRadioVisuals);
+  if (engineLocal) engineLocal.addEventListener('change', updateEngineRadioVisuals);
+
+  if (btnToggleApiKeyVisibility && inputGeminiApiKey) {
+    btnToggleApiKeyVisibility.addEventListener('click', () => {
+      if (inputGeminiApiKey.type === 'password') {
+        inputGeminiApiKey.type = 'text';
+        btnToggleApiKeyVisibility.textContent = '🔒';
+      } else {
+        inputGeminiApiKey.type = 'password';
+        btnToggleApiKeyVisibility.textContent = '👁️';
+      }
+    });
+  }
+
+  async function openAiSettingsModal() {
+    if (!aiSettingsModal) return;
+    aiSettingsModal.classList.remove('hidden');
+    if (aiTestFeedback) aiTestFeedback.style.display = 'none';
+
+    try {
+      const resp = await fetch('/api/ai/settings');
+      const data = await resp.json();
+      if (data.status === 'success') {
+        if (data.ocr_engine_type === 'local') {
+          if (engineLocal) engineLocal.checked = true;
+        } else {
+          if (engineCloud) engineCloud.checked = true;
+        }
+        if (selectGeminiModel && data.gemini_model) {
+          selectGeminiModel.value = data.gemini_model;
+        }
+        if (inputGeminiApiKey) {
+          if (data.gemini_api_key_set) {
+            inputGeminiApiKey.placeholder = `Configured (${data.gemini_api_key_masked}) — enter new key to replace`;
+            inputGeminiApiKey.value = '';
+          } else {
+            inputGeminiApiKey.placeholder = 'Paste your API key here (AIzaSy...)';
+            inputGeminiApiKey.value = '';
+          }
+        }
+        updateEngineRadioVisuals();
+      }
+    } catch (err) {
+      console.warn("Failed to load AI settings:", err);
+    }
+  }
+
+  function closeAiSettingsModal() {
+    if (aiSettingsModal) aiSettingsModal.classList.add('hidden');
+  }
+
+  if (btnOpenAiSettings) btnOpenAiSettings.addEventListener('click', openAiSettingsModal);
+  if (scanAiBadge) scanAiBadge.addEventListener('click', openAiSettingsModal);
+  if (btnCloseAiModal) btnCloseAiModal.addEventListener('click', closeAiSettingsModal);
+  if (btnCloseAiModalBtn) btnCloseAiModalBtn.addEventListener('click', closeAiSettingsModal);
+
+  if (btnTestGeminiKey) {
+    btnTestGeminiKey.addEventListener('click', async () => {
+      const keyVal = inputGeminiApiKey ? inputGeminiApiKey.value.trim() : '';
+      const modelVal = selectGeminiModel ? selectGeminiModel.value : 'gemini-3.8-flash';
+
+      btnTestGeminiKey.disabled = true;
+      btnTestGeminiKey.textContent = 'Testing connection...';
+      if (aiTestFeedback) {
+        aiTestFeedback.style.display = 'block';
+        aiTestFeedback.style.background = '#f3f4f6';
+        aiTestFeedback.style.color = '#374151';
+        aiTestFeedback.textContent = 'Contacting Google Gemini API...';
+      }
+
+      try {
+        const resp = await fetch('/api/ai/test-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gemini_api_key: keyVal, gemini_model: modelVal })
+        });
+        const resData = await resp.json();
+        if (resp.ok && resData.status === 'success') {
+          if (aiTestFeedback) {
+            aiTestFeedback.style.background = '#ecfdf5';
+            aiTestFeedback.style.color = '#065f46';
+            aiTestFeedback.innerHTML = `<strong>✅ Success:</strong> ${resData.message}`;
+          }
+        } else {
+          if (aiTestFeedback) {
+            aiTestFeedback.style.background = '#fef2f2';
+            aiTestFeedback.style.color = '#991b1b';
+            aiTestFeedback.innerHTML = `<strong>❌ Connection Failed:</strong> ${resData.message || 'Invalid API key or network error.'}`;
+          }
+        }
+      } catch (err) {
+        if (aiTestFeedback) {
+          aiTestFeedback.style.background = '#fef2f2';
+          aiTestFeedback.style.color = '#991b1b';
+          aiTestFeedback.innerHTML = `<strong>❌ Network Error:</strong> ${err.message}`;
+        }
+      } finally {
+        btnTestGeminiKey.disabled = false;
+        btnTestGeminiKey.textContent = '🔌 Test Connection';
+      }
+    });
+  }
+
+  if (btnSaveAiSettings) {
+    btnSaveAiSettings.addEventListener('click', async () => {
+      const engineVal = (engineLocal && engineLocal.checked) ? 'local' : 'cloud';
+      const keyVal = inputGeminiApiKey ? inputGeminiApiKey.value.trim() : '';
+      const modelVal = selectGeminiModel ? selectGeminiModel.value : 'gemini-3.8-flash';
+
+      btnSaveAiSettings.disabled = true;
+      btnSaveAiSettings.textContent = 'Saving...';
+
+      try {
+        const payload = {
+          ocr_engine_type: engineVal,
+          gemini_model: modelVal
+        };
+        if (keyVal) {
+          payload.gemini_api_key = keyVal;
+        }
+
+        const resp = await fetch('/api/ai/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const resData = await resp.json();
+
+        if (resp.ok && resData.status === 'success') {
+          if (scanAiBadge) {
+            if (resData.ocr_engine_type === 'cloud' && resData.gemini_api_key_set) {
+              scanAiBadge.textContent = '✨ Gemini Vision Active';
+              scanAiBadge.style.background = '#dbeafe';
+              scanAiBadge.style.color = '#1e40af';
+            } else if (resData.ocr_engine_type === 'cloud') {
+              scanAiBadge.textContent = '⚠️ Gemini Key Needed';
+              scanAiBadge.style.background = '#fef3c7';
+              scanAiBadge.style.color = '#92400e';
+            } else {
+              scanAiBadge.textContent = '⚙️ Offline RapidOCR';
+              scanAiBadge.style.background = '#f3f4f6';
+              scanAiBadge.style.color = '#4b5563';
+            }
+          }
+          closeAiSettingsModal();
+          alert("✅ AI Vision settings saved successfully!");
+        } else {
+          alert("❌ Failed to save settings: " + (resData.message || "Unknown error"));
+        }
+      } catch (err) {
+        alert("❌ Error saving settings: " + err.message);
+      } finally {
+        btnSaveAiSettings.disabled = false;
+        btnSaveAiSettings.textContent = 'Save Settings';
+      }
+    });
+  }

@@ -1,5 +1,9 @@
+import os
 import re
 import cv2
+import base64
+import io
+import requests
 import numpy as np
 from PIL import Image, ImageOps
 from rapidocr_onnxruntime import RapidOCR
@@ -780,7 +784,9 @@ def parse_mt_document_ocr(enhanced, cv_img, res_whole, lines, full_text, scale_x
         "raw_text": full_text
     }
 
-def process_document_ocr(image_path: str) -> dict:
+def _process_document_ocr_local(image_path: str, context: dict = None) -> dict:
+    if context is None:
+        context = {}
     """
     Upgraded AFCR Timesheet OCR Engine:
     - Geometric column slicing prevents horizontal text merging
@@ -1070,3 +1076,281 @@ def process_document_ocr(image_path: str) -> dict:
         "checkboxes": checkboxes,
         "raw_text": full_text
     }
+
+def process_gemini_vision_ocr(image_path: str, api_key: str = None, model: str = None, context: dict = None) -> dict:
+    """
+    Multimodal Cloud Vision OCR using Google Gemini Flash.
+    Provides human-level handwriting recognition for AFCR timesheets and MT packets.
+    """
+    if context is None:
+        context = {}
+
+    settings = config.get_settings()
+    key = api_key or settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")
+    if not key:
+        raise ValueError("Google Gemini API Key is required for Cloud Vision OCR.")
+
+    target_model = model or settings.get("gemini_model") or "gemini-3.8-flash"
+
+    # 1. Load and optimize image for upload (max 2048px maintains handwriting detail while sub-second upload)
+    pil_img = Image.open(image_path)
+    try:
+        pil_img = ImageOps.exif_transpose(pil_img)
+    except Exception:
+        pass
+
+    if pil_img.mode != "RGB":
+        pil_img = pil_img.convert("RGB")
+
+    max_dim = 2048
+    if pil_img.width > max_dim or pil_img.height > max_dim:
+        pil_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+    buf = io.BytesIO()
+    pil_img.save(buf, format="JPEG", quality=92)
+    b64_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    # 2. Build contextual prompt
+    roster = config.get_worker_roster()
+    cart_tabs = config.get_cart_tabs()
+    ctx_worker = context.get("worker_name", "")
+    ctx_cart = context.get("cart_id", "")
+    ctx_date = context.get("date", "")
+
+    prompt = f"""You are an expert handwriting timesheet recognition AI for Affordable Food Cart Rentals (AFCR).
+Your task is to extract all timesheet information from this scanned document with maximum precision.
+
+Context from previous pages of this scan packet:
+- Worker Name: {ctx_worker or 'Unknown'}
+- Food Cart / Trailer ID: {ctx_cart or 'Unknown'}
+- Date: {ctx_date or 'Unknown'}
+
+AFCR Worker Roster Reference:
+{json.dumps(roster)}
+
+AFCR Trailer / Cart Tabs Reference:
+{json.dumps(cart_tabs)}
+
+Instructions:
+1. HEADER:
+   - worker_name: Extract the worker's name. Match against the AFCR Worker Roster (e.g. Israel, Francisco, Elijah, Dani, Chico, Carlos).
+   - date: Extract the timesheet date. Format as MM/DD/YY (e.g. '10/27/26'). If not explicitly found, use context date: '{ctx_date}'.
+   - cart_id: Extract the food cart or trailer number (e.g. 'FC129', 'FC127', 'Shop').
+
+2. IDENTIFY DOCUMENT TYPE:
+   - Format A: MT/OT/RT Checklist Packet (preprinted codes F1..F16, P1..P12, G1..G6, E1..E18, C1..C10, S1..S12, with line 1 and line 2, date, time in, time out, 10-min break, lunch, NA checkboxes).
+   - Format B: Daily Timesheet (columns: Task / Job, Time In, Time Out, Cart #).
+
+3. ROW EXTRACTION:
+   - ONLY include rows that have recorded activity (handwritten date, time in/out, or marked NA / lunch / break).
+   - Ignore completely blank lines where nothing was written or checked.
+   - For each active row:
+     - code: Task code if preprinted or identified (e.g. 'F3', 'P6', 'G2', 'C1', 'Shop').
+     - line: 1 or 2 (for MT checklist pages).
+     - task: Clear description of work.
+     - category: Category name (e.g. 'Frame', 'Plumbing', 'Gas', 'Electrical', 'Carpentry', 'Sheet Metal', 'Shop', etc.).
+     - type: 'Build', 'Prep', or 'Other'.
+     - date: Date for this row (MM/DD/YY).
+     - time_in: 12-hour format with AM/PM (e.g. '07:00 AM', '08:30 AM', '12:30 PM').
+     - time_out: 12-hour format with AM/PM (e.g. '02:00 PM', '03:45 PM', '12:00 PM').
+     - duration: Elapsed time formatted as 'H:MM:SS' (e.g. '7:00:00', '1:15:00').
+     - cart_id: Cart ID for this row (e.g. 'FC129', 'FC127', 'Shop').
+     - is_na: true if N/A checkbox is checked.
+     - has_break_10: true if 10 min break is checked.
+     - has_lunch: true if lunch is checked.
+     - is_partial: true if time_in is present but time_out is missing, or vice versa.
+     - review_reason: Explanation if partial or ambiguous.
+     - status: 'completed' if full times present, 'needs_review' if partial, 'na' if is_na.
+
+Return JSON strictly matching this schema:
+{{
+  "worker_name": "string",
+  "date": "string",
+  "cart_id": "string",
+  "is_mt_sheet": true,
+  "page_info": "Page X of Y",
+  "rows": [
+    {{
+      "code": "string",
+      "line": 1,
+      "task": "string",
+      "category": "string",
+      "type": "string",
+      "date": "string",
+      "time_in": "string",
+      "time_out": "string",
+      "duration": "string",
+      "cart_id": "string",
+      "is_na": false,
+      "has_break_10": false,
+      "has_lunch": false,
+      "is_partial": false,
+      "review_reason": "string",
+      "status": "string"
+    }}
+  ]
+}}
+"""
+
+    models_to_try = [target_model]
+    for alt in ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
+        if alt not in models_to_try:
+            models_to_try.append(alt)
+
+    last_error = None
+    data = None
+    used_model = target_model
+
+    for m in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": b64_image
+                            }
+                        },
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "temperature": 0.1
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=28)
+            if resp.status_code == 200:
+                resp_json = resp.json()
+                raw_text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+                data = json.loads(raw_text)
+                used_model = m
+                break
+            else:
+                last_error = f"HTTP {resp.status_code}: {resp.text}"
+                print(f"[Gemini Vision] Model {m} returned {resp.status_code}, trying next fallback...")
+        except Exception as e:
+            last_error = str(e)
+            print(f"[Gemini Vision] Request error with model {m}: {e}")
+
+    if data is None:
+        raise RuntimeError(f"Gemini Cloud Vision failed: {last_error}")
+
+    worker_name = match_worker_name(data.get("worker_name", "")) or ctx_worker or ""
+    date_val = data.get("date", "") or ctx_date or datetime.now().strftime("%m/%d/%y")
+    cart_id = normalize_cart_token(data.get("cart_id", "")) or ctx_cart or ""
+    is_mt_sheet = bool(data.get("is_mt_sheet", True))
+    page_info = data.get("page_info", "Page 1 of 1")
+
+    if worker_name and not context.get("worker_name"):
+        context["worker_name"] = worker_name
+    if cart_id and not context.get("cart_id"):
+        context["cart_id"] = cart_id
+    if date_val and not context.get("date"):
+        context["date"] = date_val
+
+    raw_rows = data.get("rows", [])
+    processed_rows = []
+
+    for r in raw_rows:
+        row_cart = normalize_cart_token(r.get("cart_id", ""), default_cart=cart_id)
+        row_date = r.get("date", "").strip() or date_val
+        t_in = r.get("time_in", "").strip()
+        t_out = r.get("time_out", "").strip()
+
+        if t_in:
+            t_in = clean_ocr_time_token(t_in) or t_in
+        if t_out:
+            t_out = clean_ocr_time_token(t_out) or t_out
+
+        if t_in and t_out:
+            calc_dur = calculate_time_duration(t_in, t_out)
+        else:
+            calc_dur = r.get("duration", "0:00:00")
+
+        is_na = bool(r.get("is_na", False))
+        is_partial = bool(r.get("is_partial", False) or (t_in and not t_out) or (t_out and not t_in))
+        
+        status = "na" if is_na else ("needs_review" if is_partial else "completed")
+        review_reason = r.get("review_reason", "")
+        if is_partial and not review_reason:
+            review_reason = "Missing Time Out" if (t_in and not t_out) else "Missing Time In"
+
+        processed_rows.append({
+            "code": r.get("code", "").upper(),
+            "line": int(r.get("line", 1)),
+            "task": r.get("task", ""),
+            "category": r.get("category", ""),
+            "type": r.get("type", "Build"),
+            "date": row_date,
+            "time_in": t_in,
+            "time_out": t_out,
+            "duration": calc_dur,
+            "cart_id": row_cart,
+            "is_na": is_na,
+            "has_break_10": bool(r.get("has_break_10", False)),
+            "has_lunch": bool(r.get("has_lunch", False)),
+            "is_partial": is_partial,
+            "review_reason": review_reason,
+            "page": 1,
+            "status": status
+        })
+
+    fields = {
+        "worker_name": worker_name,
+        "date": date_val,
+        "cart_id": cart_id,
+        "page_info": page_info,
+        "raw_text": f"--- Google Gemini Cloud Vision ({used_model}) ---\n" + json.dumps(data, indent=2)
+    }
+
+    return {
+        "status": "success",
+        "worker_name": worker_name,
+        "date": date_val,
+        "cart_id": cart_id,
+        "page_info": page_info,
+        "is_mt_sheet": is_mt_sheet,
+        "rows": processed_rows,
+        "blank_rows": [],
+        "all_codes": processed_rows,
+        "fields": fields,
+        "lines": [],
+        "checkbox_count": 0,
+        "raw_text": fields["raw_text"],
+        "engine": f"Gemini Cloud Vision ({used_model})"
+    }
+
+def process_document_ocr(image_path: str, context: dict = None) -> dict:
+    """
+    Main OCR processor. Dynamically routes to Cloud Vision (Gemini Flash)
+    if configured, or falls back seamlessly to local RapidOCR.
+    """
+    if context is None:
+        context = {}
+
+    settings = config.get_settings()
+    engine_type = settings.get("ocr_engine_type", "cloud")
+    gemini_key = settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")
+
+    # 1. Try Cloud Vision if enabled and key is provided
+    if engine_type == "cloud" and gemini_key:
+        try:
+            print(f"[OCR] Processing document with Google Gemini Cloud Vision...")
+            result = process_gemini_vision_ocr(image_path, api_key=gemini_key, context=context)
+            if result and result.get("status") == "success":
+                return result
+        except Exception as e:
+            print(f"[OCR] Gemini Cloud Vision notice: {e}. Falling back to local OCR...")
+
+    # 2. Local RapidOCR fallback
+    print("[OCR] Processing document with local RapidOCR...")
+    return _process_document_ocr_local(image_path, context=context)
+

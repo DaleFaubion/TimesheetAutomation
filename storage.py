@@ -64,10 +64,18 @@ def normalize_cart_tab(raw_cart: str) -> str:
         
     return raw.upper().replace(" ", "")
 
+def ensure_csv_file():
+    """Ensures CSV audit log exists with headers."""
+    config.SCANS_DIR.mkdir(parents=True, exist_ok=True)
+    if not config.CSV_LOG_PATH.exists():
+        with open(config.CSV_LOG_PATH, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(CSV_HEADERS)
+
 def ensure_workbook():
     """
-    Ensures that the multi-tab FC TIMES Excel workbook exists in Desktop/AFCR_Scans.
-    If not, seeds it from the template file or creates standard tabs.
+    Ensures that the multi-tab FC TIMES Excel workbook exists in Desktop/AFCR_Scans
+    as a local template / export backup.
     """
     config.SCANS_DIR.mkdir(parents=True, exist_ok=True)
     target_path = config.EXCEL_FC_WORKBOOK_PATH
@@ -83,14 +91,16 @@ def ensure_workbook():
         wb.remove(default_sheet)
 
         standard_tabs = config.get_cart_tabs()
-
         for tab_name in standard_tabs:
             init_cart_worksheet(wb, tab_name)
 
-        wb.save(target_path)
+        try:
+            wb.save(target_path)
+        except Exception as e:
+            print(f"[Notice] Could not initialize Excel file: {e}")
 
 def init_cart_worksheet(wb, tab_name: str):
-    """Initializes a worksheet with standard AFCR headers and formatting."""
+    """Initializes an Excel worksheet with standard AFCR headers and formatting."""
     ws = wb.create_sheet(title=tab_name)
     
     # Row 1: Trailer info & Total Time
@@ -124,7 +134,6 @@ def init_cart_worksheet(wb, tab_name: str):
         cell.alignment = header_alignment
         cell.border = thin_border
 
-    # Adjust widths
     widths = [16, 32, 22, 18, 10, 14, 12, 12, 14]
     for col_idx, width in enumerate(widths, 1):
         col_letter = get_column_letter(col_idx)
@@ -132,20 +141,14 @@ def init_cart_worksheet(wb, tab_name: str):
 
     return ws
 
-def ensure_csv_file():
-    """Ensures CSV audit log exists with headers."""
-    if not config.CSV_LOG_PATH.exists():
-        with open(config.CSV_LOG_PATH, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(CSV_HEADERS)
-
 def save_submission(record: dict) -> dict:
     """
     Saves a verified submission record.
-    Supports multi-row timesheets where each row is routed to its respective Cart Tab.
-    Also appends to CSV log and triggers Google Sheets sync.
+    1. Validates all rows (ensuring start and end times are populated).
+    2. Appends directly to the local CSV audit log (Desktop/AFCR_Scans/afcr_timesheet_log.csv).
+    3. Pushes directly to Google Sheets as the PRIMARY source of truth (batch-appending per cart tab).
+    Eliminates openpyxl background disk writes to avoid Windows file-locking crashes.
     """
-    ensure_workbook()
     ensure_csv_file()
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -158,7 +161,6 @@ def save_submission(record: dict) -> dict:
     # If payload contains structured multi-rows
     rows = record.get("rows", [])
     if not rows:
-        # Fallback for single-row legacy payload
         single_task = record.get("notes") or record.get("task") or "Timesheet Entry"
         single_cart = record.get("cart_id") or (config.get_cart_tabs()[0] if config.get_cart_tabs() else "Shop")
         single_hours = record.get("hours_worked") or "01:00:00"
@@ -174,7 +176,15 @@ def save_submission(record: dict) -> dict:
             "cart_id": single_cart
         }]
 
-    # Validate rows to guarantee NO row is ever saved with missing end time or missing start time
+    # Look up codes database for category & build type normalization
+    codes_db = config.get_codes_db()
+    code_meta_map = {}
+    for code_list in [codes_db.get("mt_codes", []), codes_db.get("ot_codes", []), codes_db.get("rt_codes", [])]:
+        for c_item in code_list:
+            if c_item.get("code"):
+                code_meta_map[c_item["code"].upper()] = c_item
+
+    # Validate and normalize rows
     validated_rows = []
     for idx, item in enumerate(rows):
         t_in = str(item.get("time_in", "")).strip()
@@ -211,143 +221,72 @@ def save_submission(record: dict) -> dict:
         # Calculate exact duration
         dur_final = utils.calculate_time_duration(t_in, t_out)
         
-        v_item = dict(item)
-        v_item["time_in"] = t_in
-        v_item["time_out"] = t_out
-        v_item["duration"] = dur_final
-        v_item["task"] = str(item.get("task", "")).strip() or "General Work"
-        v_item["cart_id"] = str(item.get("cart_id", "")).strip() or str(record.get("cart_id", "")).strip() or "Shop"
+        code_val = str(item.get("code", "")).strip().upper()
+        meta = code_meta_map.get(code_val, {})
+        
+        task_name = str(item.get("task", "")).strip() or meta.get("task") or "General Work"
+        category = str(item.get("category", "")).strip() or meta.get("category") or "Misc."
+        build_type = str(item.get("type", "")).strip() or meta.get("type") or "Build"
+
+        row_cart = str(item.get("cart_id", "")).strip() or str(record.get("cart_id", "")).strip() or "Shop"
+        row_date = str(item.get("date", "")).strip() or date_val
+
+        v_item = {
+            "task": task_name,
+            "category": category,
+            "type": build_type,
+            "code": code_val,
+            "time_in": t_in,
+            "time_out": t_out,
+            "duration": dur_final,
+            "cart_id": normalize_cart_tab(row_cart),
+            "date": row_date
+        }
         validated_rows.append(v_item)
 
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
-
-    saved_items_count = 0
     synced_tabs = set()
     csv_rows_to_write = []
 
-    for item in validated_rows:
-        cart_raw = item.get("cart_id") or record.get("cart_id") or "Shop"
-        tab_name = normalize_cart_tab(cart_raw)
+    for v_item in validated_rows:
+        tab_name = v_item["cart_id"]
         synced_tabs.add(tab_name)
 
-        if tab_name not in wb.sheetnames:
-            ws = init_cart_worksheet(wb, tab_name)
-        else:
-            ws = wb[tab_name]
-
-        # Row fields
-        task_name = item["task"]
-        category = str(item.get("category", "")).strip() or "Misc."
-        build_type = str(item.get("type", "Build")).strip() or "Build"
-        code = str(item.get("code", "")).strip()
-        time_in = item["time_in"]
-        time_out = item["time_out"]
-        duration = item["duration"]
-        row_date = str(item.get("date", "")).strip() or date_val
-
-        col_map = get_sheet_column_mapping(ws)
-
-        # Check if code already exists in worksheet (e.g. pre-populated MT build sheet)
-        matched_row_idx = None
-        if code:
-            for r in range(3, ws.max_row + 1):
-                cell_code = str(ws.cell(r, col_map.get("code", 5)).value or "").strip().upper()
-                if cell_code == code.upper():
-                    matched_row_idx = r
-                    break
-
-        if matched_row_idx:
-            next_row = matched_row_idx
-            ws.cell(row=next_row, column=col_map.get("name", 1), value=worker_name)
-            if task_name:
-                ws.cell(row=next_row, column=col_map.get("task", 2), value=task_name)
-            if category:
-                ws.cell(row=next_row, column=col_map.get("category", 3), value=category)
-            if build_type:
-                ws.cell(row=next_row, column=col_map.get("type", 4), value=build_type)
-            ws.cell(row=next_row, column=col_map.get("code", 5), value=code)
-            ws.cell(row=next_row, column=col_map.get("date", 6), value=row_date)
-            ws.cell(row=next_row, column=col_map.get("time_in", 7), value=time_in)
-            ws.cell(row=next_row, column=col_map.get("time_out", 8), value=time_out)
-            ws.cell(row=next_row, column=col_map.get("task_total", 9), value=duration)
-        else:
-            # Determine next row in worksheet
-            next_row = max(3, ws.max_row + 1)
-            row_values = [
-                worker_name,
-                task_name,
-                category,
-                build_type,
-                code,
-                row_date,
-                time_in,
-                time_out,
-                duration
-            ]
-            ws.append(row_values)
-            ws.row_dimensions[next_row].height = 20
-
-            # Styling data row
-            row_fill_color = "F8FAFC" if next_row % 2 == 0 else "FFFFFF"
-            row_fill = PatternFill(start_color=row_fill_color, end_color=row_fill_color, fill_type="solid")
-            cell_font = Font(name="Calibri", size=10)
-            thin_border = Border(
-                left=Side(style='thin', color='E2E8F0'),
-                right=Side(style='thin', color='E2E8F0'),
-                top=Side(style='thin', color='E2E8F0'),
-                bottom=Side(style='thin', color='E2E8F0')
-            )
-
-            for col_idx in range(1, len(row_values) + 1):
-                cell = ws.cell(row=next_row, column=col_idx)
-                cell.fill = row_fill
-                cell.font = cell_font
-                cell.border = thin_border
-                cell.alignment = Alignment(vertical="center")
-                if col_idx in [5, 6, 7, 8, 9]:
-                    cell.alignment = Alignment(horizontal="center", vertical="center")
-
-        saved_items_count += 1
-
-        # CSV log row
         csv_rows_to_write.append([
             submission_id,
             timestamp,
             source,
             worker_name,
-            row_date,
+            v_item["date"],
             tab_name,
-            task_name,
-            category,
-            build_type,
-            code,
-            time_in,
-            time_out,
-            duration,
+            v_item["task"],
+            v_item["category"],
+            v_item["type"],
+            v_item["code"],
+            v_item["time_in"],
+            v_item["time_out"],
+            v_item["duration"],
             image_name
         ])
 
-    wb.save(config.EXCEL_FC_WORKBOOK_PATH)
+    # 1. Append to local CSV audit log
+    try:
+        with open(config.CSV_LOG_PATH, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            for r in csv_rows_to_write:
+                writer.writerow(r)
+    except Exception as e:
+        print(f"[CSV Log Write Error] {e}")
 
-    # Append to CSV
-    with open(config.CSV_LOG_PATH, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        for r in csv_rows_to_write:
-            writer.writerow(r)
-
-    # Google Sheets Sync: Synchronize all updated cart tabs directly so Excel & Google Sheets NEVER diverge
-    google_sync_res = {}
-    if config.get_settings().get("google_sheets_enabled", True):
-        for tab in synced_tabs:
-            google_sync_res[tab] = sync_tab_to_google_sheets(tab)
+    # 2. Synchronize directly to Google Sheets (Primary Database)
+    google_sync_res = sync_submission_to_google_sheets(worker_name, date_val, validated_rows)
 
     return {
         "status": "success",
         "submission_id": submission_id,
         "timestamp": timestamp,
-        "rows_saved": saved_items_count,
+        "rows_saved": len(validated_rows),
         "tabs_updated": list(synced_tabs),
-        "excel_path": str(config.EXCEL_FC_WORKBOOK_PATH),
+        "csv_path": str(config.CSV_LOG_PATH),
         "google_sync": google_sync_res
     }
 
@@ -368,7 +307,6 @@ def _get_gspread_client():
     # 1. Try OAuth token first
     if config.OAUTH_TOKEN_PATH.exists():
         try:
-            import json
             token_data = json.loads(config.OAUTH_TOKEN_PATH.read_text(encoding='utf-8'))
             creds = Credentials(
                 token=token_data.get("token"),
@@ -380,7 +318,6 @@ def _get_gspread_client():
             )
             if creds.expired and creds.refresh_token:
                 creds.refresh(Request())
-                # Re-save refreshed token
                 token_data["token"] = creds.token
                 config.OAUTH_TOKEN_PATH.write_text(json.dumps(token_data, indent=2), encoding='utf-8')
             return gspread.authorize(creds)
@@ -395,7 +332,7 @@ def _get_gspread_client():
 
 def _open_google_spreadsheet(gc, settings: dict = None):
     """
-    Centralized, resilient helper to open Google Spreadsheet.
+    Centralized, resilient helper to open Elijah's Google Spreadsheet.
     Attempts: URL -> Key/ID -> Title -> Accessible spreadsheets.
     """
     if settings is None:
@@ -420,7 +357,7 @@ def _open_google_spreadsheet(gc, settings: dict = None):
         except Exception:
             pass
 
-    # 3. Fallback: Search accessible spreadsheets for matching or active workbook
+    # 3. Fallback: Search accessible spreadsheets
     try:
         all_sheets = gc.openall()
         if all_sheets:
@@ -433,11 +370,11 @@ def _open_google_spreadsheet(gc, settings: dict = None):
 
     raise Exception(f"Could not open Google Sheet '{sheet_title}'. Please verify the Google Sheet URL in Settings.")
 
-
 def sync_submission_to_google_sheets(worker_name: str, date_val: str, rows: list) -> dict:
     """
-    Pushes rows to their respective cart tabs in Google Sheets.
-    Uses OAuth token if available, otherwise falls back to service account.
+    Fast batch-append of timesheet rows to Elijah's Google Sheets tabs.
+    Groups rows by cart tab and sends all rows for a tab in a SINGLE API call.
+    Auto-creates and formats the cart tab if it does not yet exist.
     """
     settings = config.get_settings()
     if not settings.get("google_sheets_enabled", True):
@@ -453,35 +390,52 @@ def sync_submission_to_google_sheets(worker_name: str, date_val: str, rows: list
 
     try:
         gc = _get_gspread_client()
-
         sh = _open_google_spreadsheet(gc, settings)
 
-        tabs_pushed = {}
+        # Group rows by cart tab
+        rows_by_tab = {}
         for item in rows:
             cart_raw = item.get("cart_id") or "Shop"
             tab_name = normalize_cart_tab(cart_raw)
-
-            try:
-                ws = sh.worksheet(tab_name)
-            except Exception:
-                ws = sh.add_worksheet(title=tab_name, rows=200, cols=12)
-                ws.append_row([f"Trailer Number: {tab_name}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I200)"])
-                ws.append_row(STANDARD_HEADERS)
+            if tab_name not in rows_by_tab:
+                rows_by_tab[tab_name] = []
 
             row_to_push = [
                 worker_name,
-                str(item.get("task", "")).strip(),
-                str(item.get("category", "")).strip(),
-                str(item.get("type", "Build")).strip(),
+                str(item.get("task", "")).strip() or "General Work",
+                str(item.get("category", "")).strip() or "Misc.",
+                str(item.get("type", "Build")).strip() or "Build",
                 str(item.get("code", "")).strip(),
-                str(item.get("date", date_val)).strip(),
+                str(item.get("date", date_val)).strip() or date_val,
                 str(item.get("time_in", "")).strip(),
                 str(item.get("time_out", "")).strip(),
                 str(item.get("duration", "")).strip()
             ]
+            rows_by_tab[tab_name].append(row_to_push)
 
-            ws.append_row(row_to_push, value_input_option='USER_ENTERED')
-            tabs_pushed[tab_name] = tabs_pushed.get(tab_name, 0) + 1
+        tabs_pushed = {}
+        for tab_name, tab_rows in rows_by_tab.items():
+            try:
+                ws = sh.worksheet(tab_name)
+            except Exception:
+                ws = sh.add_worksheet(title=tab_name, rows=500, cols=12)
+                ws.append_row([f"Trailer Number: {tab_name}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"], value_input_option='USER_ENTERED')
+                ws.append_row(STANDARD_HEADERS, value_input_option='USER_ENTERED')
+
+            # Ensure header rows exist if worksheet was completely empty
+            try:
+                first_row = ws.row_values(1)
+                if not first_row:
+                    ws.update('A1:I2', [
+                        [f"Trailer Number: {tab_name}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"],
+                        STANDARD_HEADERS
+                    ], value_input_option='USER_ENTERED')
+            except Exception:
+                pass
+
+            # Fast single-request batch append for this cart tab
+            ws.append_rows(tab_rows, value_input_option='USER_ENTERED')
+            tabs_pushed[tab_name] = len(tab_rows)
 
         return {
             "status": "success",
@@ -493,7 +447,6 @@ def sync_submission_to_google_sheets(worker_name: str, date_val: str, rows: list
     except Exception as e:
         print(f"[Google Sheets Error] {e}")
         return {"status": "error", "message": str(e)}
-
 
 def test_google_sheets_connection() -> dict:
     """Tests connection to Google Sheets and returns spreadsheet info."""
@@ -536,123 +489,170 @@ def test_google_sheets_connection() -> dict:
             "error": err_msg
         }
 
-
 def get_cart_data(cart_id: str) -> dict:
     """
     Returns the headers, rows, and total hours for a specific cart sheet tab.
+    Priority 1: Read live from Google Sheets if connected.
+    Priority 2: Fall back to local CSV audit log if offline or unconfigured.
+    Priority 3: Fall back to local Excel in read-only mode if available.
     """
-    ensure_workbook()
     cart_tab = normalize_cart_tab(cart_id)
 
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH, data_only=True)
-    if cart_tab not in wb.sheetnames:
+    # Priority 1: Google Sheets (Source of Truth)
+    settings = config.get_settings()
+    if settings.get("google_sheets_enabled", True) and (config.OAUTH_TOKEN_PATH.exists() or config.GOOGLE_CREDENTIALS_PATH.exists()):
+        try:
+            gc = _get_gspread_client()
+            sh = _open_google_spreadsheet(gc, settings)
+            try:
+                ws = sh.worksheet(cart_tab)
+                all_vals = ws.get_all_values()
+                if all_vals:
+                    total_time_str = "0:00:00"
+                    if len(all_vals) >= 1 and len(all_vals[0]) >= 9:
+                        total_time_str = all_vals[0][8]
+
+                    rows = []
+                    for idx, r in enumerate(all_vals[2:], start=3):
+                        if not any(r):
+                            continue
+                        name = r[0] if len(r) > 0 else ""
+                        task = r[1] if len(r) > 1 else ""
+                        category = r[2] if len(r) > 2 else ""
+                        build_type = r[3] if len(r) > 3 else ""
+                        code = r[4] if len(r) > 4 else ""
+                        date_val = r[5] if len(r) > 5 else ""
+                        time_in = r[6] if len(r) > 6 else ""
+                        time_out = r[7] if len(r) > 7 else ""
+                        task_total = r[8] if len(r) > 8 else ""
+
+                        if not task and not time_in and not time_out and not code:
+                            continue
+
+                        # Dynamic duration calculation if missing
+                        if (not task_total or task_total == "0:00:00" or task_total.startswith("=")) and time_in and time_out:
+                            task_total = utils.calculate_time_duration(time_in, time_out)
+
+                        rows.append({
+                            "row_idx": idx,
+                            "name": name,
+                            "task": task,
+                            "category": category,
+                            "type": build_type,
+                            "code": code,
+                            "date": date_val,
+                            "time_in": time_in,
+                            "time_out": time_out,
+                            "task_total": task_total
+                        })
+
+                    if (not total_time_str or total_time_str == "0:00:00" or total_time_str.startswith("=") or "total" in total_time_str.lower()) and rows:
+                        total_time_str = calculate_rows_total_time(rows)
+
+                    return {
+                        "cart_id": cart_tab,
+                        "exists": True,
+                        "total_time": total_time_str,
+                        "rows": rows,
+                        "source": "google_sheets"
+                    }
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[Google Sheets Cart Read Notice] {e}")
+
+    # Priority 2: Fall back to local CSV audit log
+    ensure_csv_file()
+    csv_rows = []
+    if config.CSV_LOG_PATH.exists():
+        try:
+            with open(config.CSV_LOG_PATH, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for idx, row in enumerate(reader, start=3):
+                    if normalize_cart_tab(row.get("Cart #", "")) == cart_tab:
+                        t_in = row.get("Time In", "")
+                        t_out = row.get("Time Out", "")
+                        t_tot = row.get("Task Total", "")
+                        if (not t_tot or t_tot == "0:00:00") and t_in and t_out:
+                            t_tot = utils.calculate_time_duration(t_in, t_out)
+
+                        csv_rows.append({
+                            "row_idx": idx,
+                            "name": row.get("Worker Name", ""),
+                            "task": row.get("Task", ""),
+                            "category": row.get("Category", ""),
+                            "type": row.get("Build / Reconditioning", "Build"),
+                            "code": row.get("Code", ""),
+                            "date": row.get("Date", ""),
+                            "time_in": t_in,
+                            "time_out": t_out,
+                            "task_total": t_tot
+                        })
+        except Exception as e:
+            print(f"[CSV Cart Read Error] {e}")
+
+    if csv_rows:
         return {
             "cart_id": cart_tab,
-            "exists": False,
-            "rows": [],
-            "total_time": "0:00:00"
+            "exists": True,
+            "total_time": calculate_rows_total_time(csv_rows),
+            "rows": csv_rows,
+            "source": "csv_audit_log"
         }
 
-    ws = wb[cart_tab]
-    total_time_raw = ws.cell(row=1, column=9).value or ws.cell(row=1, column=10).value or "0:00:00"
-    total_time_str = format_duration_cell(total_time_raw)
+    # Priority 3: Fall back to Excel file in read-only mode if exists
+    if config.EXCEL_FC_WORKBOOK_PATH.exists():
+        try:
+            wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH, data_only=True, read_only=True)
+            if cart_tab in wb.sheetnames:
+                ws = wb[cart_tab]
+                rows = []
+                for r_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+                    if not row or not any(row):
+                        continue
+                    name = str(row[0] or "") if len(row) > 0 else ""
+                    task = str(row[1] or "") if len(row) > 1 else ""
+                    t_in = format_time_cell(row[6]) if len(row) > 6 else ""
+                    t_out = format_time_cell(row[7]) if len(row) > 7 else ""
+                    t_tot = format_duration_cell(row[8]) if len(row) > 8 else ""
 
-    col_map = get_sheet_column_mapping(ws)
-    rows = []
-    for r in range(3, ws.max_row + 1):
-        name = ws.cell(r, col_map.get("name", 1)).value
-        task = ws.cell(r, col_map.get("task", 2)).value
-        time_in_cell = format_time_cell(ws.cell(r, col_map["time_in"]).value) if "time_in" in col_map else ""
-        time_out_cell = format_time_cell(ws.cell(r, col_map["time_out"]).value) if "time_out" in col_map else ""
-        task_total_cell = format_duration_cell(ws.cell(r, col_map["task_total"]).value) if "task_total" in col_map else ""
+                    if not task and not t_in and not t_out:
+                        continue
 
-        # Ignore completely blank rows
-        if not task and not time_in_cell and not time_out_cell:
-            continue
+                    if (not t_tot or t_tot == "0:00:00" or t_tot.startswith("=")) and t_in and t_out:
+                        t_tot = utils.calculate_time_duration(t_in, t_out)
 
-        # If time_out is missing but we have time_in and task_total, derive time_out
-        if not time_out_cell and time_in_cell and task_total_cell and task_total_cell != "0:00:00":
-            in_min = utils.parse_time_minutes(time_in_cell)
-            dur_min = utils.parse_time_minutes(task_total_cell)
-            if in_min is not None and dur_min is not None:
-                time_out_cell = utils.format_minutes_to_time((in_min + dur_min) % 1440)
-
-        # Dynamic task total
-        if (not task_total_cell or task_total_cell == "0:00:00" or task_total_cell.startswith("=")) and time_in_cell and time_out_cell:
-            task_total_cell = utils.calculate_time_duration(time_in_cell, time_out_cell)
-
-        category = ws.cell(r, col_map["category"]).value if "category" in col_map else ""
-        build_type = ws.cell(r, col_map["type"]).value if "type" in col_map else ""
-        code = ws.cell(r, col_map["code"]).value if "code" in col_map else ""
-        date_val = ws.cell(r, col_map["date"]).value if "date" in col_map else ""
-
-        row_dict = {
-            "row_idx": r,
-            "name": str(name or ""),
-            "task": str(task or ""),
-            "category": str(category or ""),
-            "type": str(build_type or ""),
-            "code": str(code or ""),
-            "date": format_date_cell(date_val),
-            "time_in": time_in_cell,
-            "time_out": time_out_cell,
-            "task_total": task_total_cell
-        }
-        rows.append(row_dict)
-
-    if (not total_time_str or total_time_str == "0:00:00" or total_time_str.startswith("=") or "total" in total_time_str.lower() or "trailer" in total_time_str.lower()) and rows:
-        total_time_str = calculate_rows_total_time(rows)
+                    rows.append({
+                        "row_idx": r_idx,
+                        "name": name,
+                        "task": task,
+                        "category": str(row[2] or "") if len(row) > 2 else "",
+                        "type": str(row[3] or "Build") if len(row) > 3 else "Build",
+                        "code": str(row[4] or "") if len(row) > 4 else "",
+                        "date": format_date_cell(row[5]) if len(row) > 5 else "",
+                        "time_in": t_in,
+                        "time_out": t_out,
+                        "task_total": t_tot
+                    })
+                wb.close()
+                return {
+                    "cart_id": cart_tab,
+                    "exists": True,
+                    "total_time": calculate_rows_total_time(rows),
+                    "rows": rows,
+                    "source": "excel_readonly"
+                }
+            wb.close()
+        except Exception:
+            pass
 
     return {
         "cart_id": cart_tab,
-        "exists": True,
-        "total_time": total_time_str,
-        "rows": rows
+        "exists": False,
+        "rows": [],
+        "total_time": "0:00:00",
+        "source": "none"
     }
-
-def get_sheet_column_mapping(ws) -> dict:
-    """
-    Dynamically maps column indices for a worksheet based on Row 2 headers.
-    Accommodates older sheets that had 6, 7, 8, or 9 columns.
-    """
-    col_map = {
-        "name": 1,
-        "task": 2,
-        "category": 3,
-        "type": 4,
-        "code": 5,
-        "date": 6,
-        "time_in": 7,
-        "time_out": 8,
-        "task_total": 9
-    }
-    
-    detected = {}
-    for col_idx in range(1, 15):
-        val = str(ws.cell(2, col_idx).value or '').strip().lower()
-        if not val:
-            continue
-        if 'name' in val and 'name' not in detected:
-            detected['name'] = col_idx
-        elif ('task' in val or 'job' in val) and 'total' not in val and 'task' not in detected:
-            detected['task'] = col_idx
-        elif 'category' in val and 'category' not in detected:
-            detected['category'] = col_idx
-        elif ('build' in val or 'maintenance' in val or 'reconditioning' in val) and 'type' not in detected:
-            detected['type'] = col_idx
-        elif 'code' in val and 'code' not in detected:
-            detected['code'] = col_idx
-        elif 'date' in val and 'date' not in detected:
-            detected['date'] = col_idx
-        elif ('time in' in val or val == 'in') and 'time_in' not in detected:
-            detected['time_in'] = col_idx
-        elif ('out' in val or 'time out' in val) and 'time_out' not in detected:
-            detected['time_out'] = col_idx
-        elif ('total' in val or 'task total' in val) and 'task_total' not in detected:
-            detected['task_total'] = col_idx
-
-    col_map.update(detected)
-    return col_map
 
 def calculate_rows_total_time(rows: list) -> str:
     """Calculates sum of HH:MM:SS durations across rows."""
@@ -675,38 +675,71 @@ def calculate_rows_total_time(rows: list) -> str:
 
 def get_all_cart_summaries() -> list:
     """Returns summaries of all cart tabs (number of tasks, total time)."""
-    ensure_workbook()
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH, data_only=True)
+    cart_tabs = config.get_cart_tabs()
     summaries = []
 
-    for name in wb.sheetnames:
-        ws = wb[name]
-        col_map = get_sheet_column_mapping(ws)
-        count = 0
-        rows = []
-        name_col = col_map.get("name", 1)
-        task_col = col_map.get("task", 2)
-        total_col = col_map.get("task_total", 9)
+    # Check if Google Sheets is connected
+    settings = config.get_settings()
+    sh = None
+    if settings.get("google_sheets_enabled", True) and (config.OAUTH_TOKEN_PATH.exists() or config.GOOGLE_CREDENTIALS_PATH.exists()):
+        try:
+            gc = _get_gspread_client()
+            sh = _open_google_spreadsheet(gc, settings)
+        except Exception:
+            sh = None
 
-        for r in range(3, ws.max_row + 1):
-            if ws.cell(r, name_col).value or ws.cell(r, task_col).value:
-                count += 1
-                t_in = format_time_cell(ws.cell(r, col_map["time_in"]).value) if "time_in" in col_map else ""
-                t_out = format_time_cell(ws.cell(r, col_map["time_out"]).value) if "time_out" in col_map else ""
-                t_tot = format_duration_cell(ws.cell(r, total_col).value)
-                if (not t_tot or t_tot == "0:00:00" or t_tot.startswith("=")) and t_in and t_out:
-                    t_tot = utils.calculate_time_duration(t_in, t_out)
-                rows.append({"task_total": t_tot})
+    if sh:
+        try:
+            available_worksheets = {w.title: w for w in sh.worksheets()}
+            for tab_name in cart_tabs:
+                norm_tab = normalize_cart_tab(tab_name)
+                if norm_tab in available_worksheets:
+                    ws = available_worksheets[norm_tab]
+                    vals = ws.get_all_values()
+                    count = max(0, len(vals) - 2) if len(vals) >= 2 else 0
+                    total_time = "0:00:00"
+                    if len(vals) >= 1 and len(vals[0]) >= 9:
+                        total_time = vals[0][8]
+                    if not total_time or total_time.startswith("="):
+                        data_rows = [{"task_total": r[8]} for r in vals[2:] if len(r) >= 9]
+                        total_time = calculate_rows_total_time(data_rows)
+                    summaries.append({
+                        "cart_id": norm_tab,
+                        "entry_count": count,
+                        "total_time": total_time
+                    })
+                else:
+                    summaries.append({
+                        "cart_id": norm_tab,
+                        "entry_count": 0,
+                        "total_time": "0:00:00"
+                    })
+            return summaries
+        except Exception as e:
+            print(f"[Google Sheets Summaries Error] {e}")
 
-        total_time_val = ws.cell(1, total_col).value or ws.cell(1, 9).value or ws.cell(1, 8).value or "0:00:00"
-        time_str = format_duration_cell(total_time_val)
-        if (not time_str or time_str == "0:00:00" or time_str.startswith("=") or "total" in time_str.lower() or "trailer" in time_str.lower()) and rows:
-            time_str = calculate_rows_total_time(rows)
+    # Fallback: Calculate from CSV audit log
+    ensure_csv_file()
+    tab_counts = {normalize_cart_tab(t): [] for t in cart_tabs}
+    try:
+        with open(config.CSV_LOG_PATH, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ct = normalize_cart_tab(row.get("Cart #", ""))
+                if ct not in tab_counts:
+                    tab_counts[ct] = []
+                tab_counts[ct].append(row)
+    except Exception:
+        pass
 
+    for tab_name in cart_tabs:
+        norm_tab = normalize_cart_tab(tab_name)
+        rows = tab_counts.get(norm_tab, [])
+        dur_rows = [{"task_total": r.get("Task Total", "")} for r in rows]
         summaries.append({
-            "cart_id": name,
-            "entry_count": count,
-            "total_time": time_str
+            "cart_id": norm_tab,
+            "entry_count": len(rows),
+            "total_time": calculate_rows_total_time(dur_rows)
         })
 
     return summaries
@@ -778,11 +811,10 @@ def delete_submission(submission_id: str) -> bool:
 
     return False
 
-
 def sync_tab_to_google_sheets(tab_name: str) -> dict:
     """
-    Syncs the entire contents of a cart tab from the local Excel workbook to Google Sheets.
-    Keeps Google Sheets as an exact synchronized replica of Excel.
+    Syncs the contents of a specific cart tab into Google Sheets.
+    Pulls data from CSV audit log or Excel and uploads to Google Sheets.
     """
     settings = config.get_settings()
     if not settings.get("google_sheets_enabled", True):
@@ -801,19 +833,14 @@ def sync_tab_to_google_sheets(tab_name: str) -> dict:
         try:
             ws = sh.worksheet(norm_tab)
         except Exception:
-            ws = sh.add_worksheet(title=norm_tab, rows=200, cols=12)
+            ws = sh.add_worksheet(title=norm_tab, rows=500, cols=12)
 
-        # Fetch current Excel rows for this tab
         cart_info = get_cart_data(norm_tab)
-        excel_rows = cart_info.get("rows", [])
+        rows = cart_info.get("rows", [])
 
-        # Build sheet values:
-        # Row 1: Trailer info & Total Time
-        # Row 2: Standard column headers
-        # Row 3+: Data rows
         header_row1 = [f"Trailer Number: {norm_tab}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"]
         all_values = [header_row1, STANDARD_HEADERS]
-        for r in excel_rows:
+        for r in rows:
             all_values.append([
                 r.get("name", ""),
                 r.get("task", ""),
@@ -827,23 +854,20 @@ def sync_tab_to_google_sheets(tab_name: str) -> dict:
             ])
 
         ws.clear()
-        ws.update(all_values, 'A1', value_input_option='USER_ENTERED')
+        ws.update('A1', all_values, value_input_option='USER_ENTERED')
         return {"status": "success", "message": f"Tab {norm_tab} synced to Google Sheets"}
     except Exception as e:
         print(f"[Google Sheets Sync Tab Error] {e}")
         return {"status": "error", "message": str(e)}
 
-
 def sync_all_tabs_to_google_sheets() -> dict:
     """
-    Syncs every cart tab from the master local Excel workbook into Google Sheets.
-    Creates and formats all missing tabs automatically.
+    Syncs all cart tabs into Google Sheets.
     """
-    ensure_workbook()
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH, data_only=True)
+    cart_tabs = config.get_cart_tabs()
     synced = []
     errors = []
-    for tab in wb.sheetnames:
+    for tab in cart_tabs:
         res = sync_tab_to_google_sheets(tab)
         if res.get("status") == "success":
             synced.append(tab)
@@ -856,28 +880,14 @@ def sync_all_tabs_to_google_sheets() -> dict:
         "count": len(synced)
     }
 
-
-
 def update_cart_row(cart_id: str, row_idx: int, updated_data: dict) -> dict:
     """
-    Updates an existing entry by hand in the Excel workbook.
-    If the manager moved the entry to a different cart, it relocates to that tab.
-    Automatically re-calculates task duration and syncs with Google Sheets.
+    Updates an existing entry by hand in Google Sheets and CSV log.
+    Eliminates openpyxl file locking.
     """
-    ensure_workbook()
     cart_tab = normalize_cart_tab(cart_id)
     new_cart_raw = updated_data.get("cart_id")
     new_cart_tab = normalize_cart_tab(new_cart_raw) if new_cart_raw else cart_tab
-
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
-    if cart_tab not in wb.sheetnames:
-        return {"status": "error", "message": f"Cart tab {cart_tab} does not exist"}
-
-    ws = wb[cart_tab]
-    if row_idx < 3 or row_idx > ws.max_row:
-        return {"status": "error", "message": f"Invalid row index {row_idx}"}
-
-    col_map = get_sheet_column_mapping(ws)
 
     time_in = str(updated_data.get("time_in", "")).strip()
     time_out = str(updated_data.get("time_out", "")).strip()
@@ -895,34 +905,57 @@ def update_cart_row(cart_id: str, row_idx: int, updated_data: dict) -> dict:
     code = str(updated_data.get("code", "")).strip()
     date_val = str(updated_data.get("date", "")).strip()
 
-    if new_cart_tab != cart_tab:
-        # Row was moved to another cart trailer
-        ws.delete_rows(row_idx, 1)
-        if new_cart_tab not in wb.sheetnames:
-            target_ws = init_cart_worksheet(wb, new_cart_tab)
+    # Update Google Sheets if connected
+    try:
+        gc = _get_gspread_client()
+        sh = _open_google_spreadsheet(gc)
+        ws = sh.worksheet(cart_tab)
+
+        if new_cart_tab != cart_tab:
+            # Delete from old tab
+            ws.delete_rows(row_idx)
+            # Add to new tab
+            try:
+                target_ws = sh.worksheet(new_cart_tab)
+            except Exception:
+                target_ws = sh.add_worksheet(title=new_cart_tab, rows=500, cols=12)
+                target_ws.append_row([f"Trailer Number: {new_cart_tab}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"], value_input_option='USER_ENTERED')
+                target_ws.append_row(STANDARD_HEADERS, value_input_option='USER_ENTERED')
+            target_ws.append_row([worker_name, task_name, category, build_type, code, date_val, time_in, time_out, duration], value_input_option='USER_ENTERED')
         else:
-            target_ws = wb[new_cart_tab]
+            # Update in place in Google Sheets
+            ws.update(f'A{row_idx}:I{row_idx}', [[worker_name, task_name, category, build_type, code, date_val, time_in, time_out, duration]], value_input_option='USER_ENTERED')
+    except Exception as e:
+        print(f"[Google Sheets Row Update Notice] {e}")
 
-        row_values = [worker_name, task_name, category, build_type, code, date_val, time_in, time_out, duration]
-        target_ws.append(row_values)
-        wb.save(config.EXCEL_FC_WORKBOOK_PATH)
-
-        sync_tab_to_google_sheets(cart_tab)
-        sync_tab_to_google_sheets(new_cart_tab)
-    else:
-        # Update in place
-        ws.cell(row=row_idx, column=col_map.get("name", 1), value=worker_name)
-        ws.cell(row=row_idx, column=col_map.get("task", 2), value=task_name)
-        ws.cell(row=row_idx, column=col_map.get("category", 3), value=category)
-        ws.cell(row=row_idx, column=col_map.get("type", 4), value=build_type)
-        ws.cell(row=row_idx, column=col_map.get("code", 5), value=code)
-        ws.cell(row=row_idx, column=col_map.get("date", 6), value=date_val)
-        ws.cell(row=row_idx, column=col_map.get("time_in", 7), value=time_in)
-        ws.cell(row=row_idx, column=col_map.get("time_out", 8), value=time_out)
-        ws.cell(row=row_idx, column=col_map.get("task_total", 9), value=duration)
-        wb.save(config.EXCEL_FC_WORKBOOK_PATH)
-
-        sync_tab_to_google_sheets(cart_tab)
+    # Also update in local CSV if found
+    try:
+        ensure_csv_file()
+        if config.CSV_LOG_PATH.exists():
+            rows = []
+            with open(config.CSV_LOG_PATH, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader, None)
+                for r in reader:
+                    if r and len(r) >= 13 and r[5] == cart_tab and r[3] == worker_name and r[9] == code:
+                        r[3] = worker_name
+                        r[4] = date_val
+                        r[5] = new_cart_tab
+                        r[6] = task_name
+                        r[7] = category
+                        r[8] = build_type
+                        r[9] = code
+                        r[10] = time_in
+                        r[11] = time_out
+                        r[12] = duration
+                    rows.append(r)
+            if headers:
+                with open(config.CSV_LOG_PATH, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(headers)
+                    writer.writerows(rows)
+    except Exception as ex:
+        print(f"[CSV Row Update Notice] {ex}")
 
     return {
         "status": "success",
@@ -930,36 +963,180 @@ def update_cart_row(cart_id: str, row_idx: int, updated_data: dict) -> dict:
         "cart_id": new_cart_tab
     }
 
+def delete_cart_row(cart_id: str, row_idx: int, row_data: dict = None) -> dict:
+    """
+    Deletes an entry from Excel, CSV audit log, and Google Sheets.
+    Uses row_idx and optional row_data fields for precision matching across sources.
+    """
+    if row_data is None:
+        row_data = {}
 
-def delete_cart_row(cart_id: str, row_idx: int) -> dict:
-    """
-    Deletes an incorrect or duplicate row by hand from the Excel workbook
-    and syncs the deletion to Google Sheets.
-    """
-    ensure_workbook()
     cart_tab = normalize_cart_tab(cart_id)
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
-    if cart_tab not in wb.sheetnames:
-        return {"status": "error", "message": f"Cart tab {cart_tab} does not exist"}
+    w_name = str(row_data.get("name", "")).strip()
+    t_task = str(row_data.get("task", "")).strip()
+    t_in = str(row_data.get("time_in", "")).strip()
+    t_out = str(row_data.get("time_out", "")).strip()
+    t_code = str(row_data.get("code", "")).strip()
+    date_val = str(row_data.get("date", "")).strip()
 
-    ws = wb[cart_tab]
-    if row_idx < 3 or row_idx > ws.max_row:
-        return {"status": "error", "message": f"Invalid row index {row_idx}"}
+    deleted_from = []
 
-    ws.delete_rows(row_idx, 1)
-    # Ensure total formula remains intact
-    ws.cell(row=1, column=8, value="Total Time:")
-    ws.cell(row=1, column=9, value="=SUM(I3:I500)")
-    wb.save(config.EXCEL_FC_WORKBOOK_PATH)
+    # 1. Delete from local Excel workbook
+    if config.EXCEL_FC_WORKBOOK_PATH.exists():
+        try:
+            wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
+            if cart_tab in wb.sheetnames:
+                ws = wb[cart_tab]
+                target_r = None
+                
+                # Match by cell contents if row_data provided
+                if w_name or t_task:
+                    for r_i in range(3, ws.max_row + 1):
+                        cell_name = str(ws.cell(r_i, 1).value or "").strip()
+                        cell_task = str(ws.cell(r_i, 2).value or "").strip()
+                        if (not w_name or cell_name.lower() == w_name.lower()) and \
+                           (not t_task or cell_task.lower() == t_task.lower()):
+                            target_r = r_i
+                            break
 
-    sync_tab_to_google_sheets(cart_tab)
-    return {"status": "success", "message": f"Row {row_idx} deleted from {cart_tab}"}
+                if target_r is None and 3 <= row_idx <= ws.max_row:
+                    target_r = row_idx
 
+                if target_r and 3 <= target_r <= ws.max_row:
+                    ws.delete_rows(target_r, 1)
+                    wb.save(config.EXCEL_FC_WORKBOOK_PATH)
+                    deleted_from.append("Excel")
+                    print(f"[Excel] Deleted row {target_r} from {cart_tab}")
+        except Exception as ex:
+            print(f"[Excel Delete Row Error] {ex}")
+
+    # 2. Delete matching entry from CSV audit log
+    if config.CSV_LOG_PATH.exists():
+        try:
+            rows = []
+            deleted_csv = False
+            with open(config.CSV_LOG_PATH, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader, None)
+                for r in reader:
+                    if not deleted_csv and r and len(r) >= 12:
+                        r_cart = normalize_cart_tab(r[5])
+                        if r_cart == cart_tab:
+                            r_worker = r[3].strip()
+                            r_task = r[6].strip()
+                            if (not w_name or r_worker.lower() == w_name.lower()) and \
+                               (not t_task or r_task.lower() == t_task.lower()):
+                                deleted_csv = True
+                                continue
+                    rows.append(r)
+            if headers and deleted_csv:
+                with open(config.CSV_LOG_PATH, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(headers)
+                    writer.writerows(rows)
+                deleted_from.append("CSV")
+                print(f"[CSV] Deleted row from {cart_tab}")
+        except Exception as ex:
+            print(f"[CSV Delete Row Error] {ex}")
+
+    # 3. Delete from Google Sheets if connected
+    settings = config.get_settings()
+    if settings.get("google_sheets_enabled", True) and (config.OAUTH_TOKEN_PATH.exists() or config.GOOGLE_CREDENTIALS_PATH.exists()):
+        try:
+            gc = _get_gspread_client()
+            sh = _open_google_spreadsheet(gc, settings)
+            ws = sh.worksheet(cart_tab)
+            if 3 <= row_idx <= ws.row_count:
+                ws.delete_rows(row_idx)
+                deleted_from.append("Google Sheets")
+        except Exception as e:
+            print(f"[Google Sheets Delete Row Notice] {e}")
+
+    return {
+        "status": "success",
+        "message": f"Row deleted from {cart_tab} ({', '.join(deleted_from) if deleted_from else 'local storage'})",
+        "deleted_from": deleted_from
+    }
+
+def clear_cart_tab(cart_id: str) -> dict:
+    """
+    Clears all timesheet entries from a specific food cart tab across Excel,
+    CSV audit log, and Google Sheets while preserving Row 1 (header title & formula)
+    and Row 2 (column headers).
+    """
+    cart_tab = normalize_cart_tab(cart_id)
+    cleared_from = []
+
+    # 1. Clear in local Excel workbook
+    if config.EXCEL_FC_WORKBOOK_PATH.exists():
+        try:
+            wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
+            if cart_tab in wb.sheetnames:
+                ws = wb[cart_tab]
+                if ws.max_row > 2:
+                    ws.delete_rows(3, ws.max_row - 2)
+                ws.cell(1, 1, value=f"Trailer Number: {cart_tab}")
+                ws.cell(1, 8, value="Total Time:")
+                ws.cell(1, 9, value="=SUM(I3:I500)")
+                for c_idx, h_name in enumerate(STANDARD_HEADERS, start=1):
+                    ws.cell(2, c_idx, value=h_name)
+                wb.save(config.EXCEL_FC_WORKBOOK_PATH)
+                cleared_from.append("Excel")
+                print(f"[Excel] Cleared all entries for {cart_tab}")
+        except Exception as ex:
+            print(f"[Excel Clear Cart Error] {ex}")
+
+    # 2. Clear all rows matching this cart from CSV audit log
+    if config.CSV_LOG_PATH.exists():
+        try:
+            kept_rows = []
+            with open(config.CSV_LOG_PATH, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader, None)
+                for r in reader:
+                    if r and len(r) >= 6:
+                        if normalize_cart_tab(r[5]) != cart_tab:
+                            kept_rows.append(r)
+                    else:
+                        kept_rows.append(r)
+            if headers:
+                with open(config.CSV_LOG_PATH, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(headers)
+                    writer.writerows(kept_rows)
+                cleared_from.append("CSV")
+                print(f"[CSV] Cleared entries for {cart_tab}")
+        except Exception as ex:
+            print(f"[CSV Clear Cart Error] {ex}")
+
+    # 3. Clear data in Google Sheets worksheet
+    settings = config.get_settings()
+    if settings.get("google_sheets_enabled", True) and (config.OAUTH_TOKEN_PATH.exists() or config.GOOGLE_CREDENTIALS_PATH.exists()):
+        try:
+            gc = _get_gspread_client()
+            sh = _open_google_spreadsheet(gc, settings)
+            try:
+                ws = sh.worksheet(cart_tab)
+                if ws.row_count > 2:
+                    header_r1 = [f"Trailer Number: {cart_tab}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"]
+                    ws.clear()
+                    ws.update('A1:I2', [header_r1, STANDARD_HEADERS], value_input_option='USER_ENTERED')
+                    cleared_from.append("Google Sheets")
+                    print(f"[Google Sheets] Cleared entries for {cart_tab}")
+            except Exception:
+                pass
+        except Exception as ex:
+            print(f"[Google Sheets Clear Cart Error] {ex}")
+
+    return {
+        "status": "success",
+        "message": f"All data for trailer {cart_tab} cleared successfully.",
+        "cart_id": cart_tab,
+        "cleared_from": cleared_from
+    }
 
 def add_cart_row(cart_id: str, data: dict) -> dict:
-    """
-    Directly adds a single row by hand to a specific cart tab.
-    """
+    """Directly adds a single row by hand to a specific cart tab."""
     time_in = str(data.get("time_in", "08:00 AM")).strip()
     time_out = str(data.get("time_out", "09:00 AM")).strip()
     dur = data.get("task_total") or data.get("duration") or ""
@@ -984,50 +1161,22 @@ def add_cart_row(cart_id: str, data: dict) -> dict:
 
 def initialize_cart_with_mt_codes(cart_id: str) -> dict:
     """
-    Formats the given food cart tab with all 96 MT build codes organized by category.
-    Creates clean category banner headers (FRAME, SHELL, INTERIOR, ROOF, HOOD,
-    PLUMBING, ELECTRICAL, GAS, EXTERIOR FINISH, FINAL CHECK).
+    Formats the given food cart tab with all MT build codes organized by category.
+    Sets up the worksheet in Google Sheets.
     """
-    ensure_workbook()
     cart_tab = normalize_cart_tab(cart_id)
-    wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
-
-    if cart_tab in wb.sheetnames:
-        ws = wb[cart_tab]
-        wb.remove(ws)
-
-    ws = init_cart_worksheet(wb, cart_tab)
-
     codes_db = config.get_codes_db()
     mt_codes = codes_db.get("mt_codes", [])
 
-    banner_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-    banner_font = Font(name="Calibri", size=10, bold=True, color="F8FAFC")
-    data_font = Font(name="Calibri", size=10)
-    center_align = Alignment(horizontal="center", vertical="center")
-    thin_border = Border(
-        left=Side(style='thin', color='E2E8F0'),
-        right=Side(style='thin', color='E2E8F0'),
-        top=Side(style='thin', color='E2E8F0'),
-        bottom=Side(style='thin', color='E2E8F0')
-    )
-
+    rows_to_seed = []
     current_cat = None
     for item in mt_codes:
         cat = item.get("category", "General")
         if cat != current_cat:
             current_cat = cat
-            row_idx = ws.max_row + 1
-            ws.append([f"=== {cat.upper()} ===", "", "", "", "", "", "", "", ""])
-            ws.row_dimensions[row_idx].height = 22
-            for c in range(1, 10):
-                cell = ws.cell(row=row_idx, column=c)
-                cell.fill = banner_fill
-                cell.font = banner_font
-                cell.alignment = Alignment(vertical="center")
+            rows_to_seed.append([f"=== {cat.upper()} ===", "", "", "", "", "", "", "", ""])
 
-        row_idx = ws.max_row + 1
-        ws.append([
+        rows_to_seed.append([
             "",
             item.get("task", ""),
             cat,
@@ -1038,27 +1187,22 @@ def initialize_cart_with_mt_codes(cart_id: str) -> dict:
             "",
             ""
         ])
-        ws.row_dimensions[row_idx].height = 20
 
-        row_fill_color = "F8FAFC" if row_idx % 2 == 0 else "FFFFFF"
-        row_fill = PatternFill(start_color=row_fill_color, end_color=row_fill_color, fill_type="solid")
-
-        for col_idx in range(1, 10):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.fill = row_fill
-            cell.font = data_font
-            cell.border = thin_border
-            cell.alignment = Alignment(vertical="center")
-            if col_idx in [5, 6, 7, 8, 9]:
-                cell.alignment = center_align
-
-    wb.save(config.EXCEL_FC_WORKBOOK_PATH)
-
-    # Sync tab structure to Google Sheets if enabled
+    # Push to Google Sheets if connected
     try:
-        sync_tab_to_google_sheets(cart_tab)
-    except Exception:
-        pass
+        gc = _get_gspread_client()
+        sh = _open_google_spreadsheet(gc)
+        try:
+            ws = sh.worksheet(cart_tab)
+            ws.clear()
+        except Exception:
+            ws = sh.add_worksheet(title=cart_tab, rows=500, cols=12)
+
+        header_row1 = [f"Trailer Number: {cart_tab}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"]
+        all_values = [header_row1, STANDARD_HEADERS] + rows_to_seed
+        ws.update('A1', all_values, value_input_option='USER_ENTERED')
+    except Exception as e:
+        print(f"[Init MT Codes Google Sheets Notice] {e}")
 
     return {
         "status": "success",
@@ -1067,3 +1211,71 @@ def initialize_cart_with_mt_codes(cart_id: str) -> dict:
         "message": f"Successfully initialized {cart_tab} with {len(mt_codes)} MT build codes."
     }
 
+def clear_all_timesheet_entries() -> dict:
+    """
+    Clears all timesheet entries across all cart tabs in Google Sheets and local audit log
+    so Elijah can start fresh with production data.
+    Automatically saves a timestamped backup before clearing.
+    Preserves Row 1 (Trailer Number & Total Time formula) and Row 2 (Headers).
+    """
+    ensure_csv_file()
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = config.EXPORTS_DIR
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_filename = f"afcr_timesheet_backup_{timestamp}.csv"
+    backup_path = backup_dir / backup_filename
+
+    # 1. Create safety backup of the CSV audit log
+    if config.CSV_LOG_PATH.exists():
+        shutil.copy2(config.CSV_LOG_PATH, backup_path)
+
+    # 2. Reset afcr_timesheet_log.csv to empty headers
+    with open(config.CSV_LOG_PATH, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(CSV_HEADERS)
+
+    # 3. Clear data rows in Google Sheets tabs (keeping Row 1 & 2 intact)
+    cleared_tabs = []
+    settings = config.get_settings()
+    if settings.get("google_sheets_enabled", True) and (config.OAUTH_TOKEN_PATH.exists() or config.GOOGLE_CREDENTIALS_PATH.exists()):
+        try:
+            gc = _get_gspread_client()
+            sh = _open_google_spreadsheet(gc, settings)
+            for ws in sh.worksheets():
+                tab_title = ws.title
+                try:
+                    # Keep Row 1 and Row 2 intact, clear everything below
+                    total_rows = ws.row_count
+                    if total_rows > 2:
+                        header_row1 = [f"Trailer Number: {tab_title}", "", "", "", "", "", "", "Total Time:", "=SUM(I3:I500)"]
+                        ws.clear()
+                        ws.update('A1:I2', [header_row1, STANDARD_HEADERS], value_input_option='USER_ENTERED')
+                        cleared_tabs.append(tab_title)
+                except Exception as ex:
+                    print(f"[Clear Tab Error {tab_title}] {ex}")
+        except Exception as e:
+            print(f"[Google Sheets Clear All Error] {e}")
+
+    # 4. Safely clear local Excel workbook if it exists without crashing on lock
+    if config.EXCEL_FC_WORKBOOK_PATH.exists():
+        try:
+            wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
+            for sname in wb.sheetnames:
+                ws_x = wb[sname]
+                if ws_x.max_row > 2:
+                    ws_x.delete_rows(3, ws_x.max_row - 2)
+                ws_x.cell(1, 1, value=f"Trailer Number: {sname}")
+                ws_x.cell(1, 8, value="Total Time:")
+                ws_x.cell(1, 9, value="=SUM(I3:I500)")
+            wb.save(config.EXCEL_FC_WORKBOOK_PATH)
+        except Exception as e:
+            print(f"[Local Excel Clear Notice - Ignored] {e}")
+
+    return {
+        "status": "success",
+        "message": f"All timesheet entries cleared successfully. Fresh production state ready.",
+        "backup_file": str(backup_path),
+        "backup_name": backup_filename,
+        "cleared_tabs": cleared_tabs
+    }

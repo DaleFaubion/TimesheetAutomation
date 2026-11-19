@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import uuid
 import json
 import subprocess
@@ -15,6 +16,7 @@ import config
 import utils
 import ocr_engine
 import storage
+import updater
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32MB max upload
@@ -46,23 +48,20 @@ def is_mobile_user_agent(ua_string: str) -> bool:
 
 @app.route('/')
 def index():
-    user_agent = request.headers.get('User-Agent', '')
-    if is_mobile_user_agent(user_agent) and not request.args.get('desktop_mode'):
-        return redirect(url_for('mobile_scanner'))
     return redirect(url_for('manager_dashboard'))
 
 @app.route('/m')
 @app.route('/mobile')
 def mobile_scanner():
-    """Worker Mobile Camera & OCR Capture Interface."""
-    return render_template('mobile.html')
+    """Redirect mobile visitors to manager desktop dashboard."""
+    return redirect(url_for('manager_dashboard'))
 
 @app.route('/manager')
 def manager_dashboard():
     """Manager & Assistant Desktop Hub."""
     local_ip = utils.get_local_ip()
     port = config.DEFAULT_PORT
-    mobile_url = f"http://{local_ip}:{port}/m"
+    mobile_url = f"http://{local_ip}:{port}/manager"
     qr_code_data_url = utils.generate_qr_code_data_url(mobile_url)
     
     settings = config.get_settings()
@@ -77,8 +76,29 @@ def manager_dashboard():
         scans_folder=str(config.SCANS_DIR),
         google_sheets_enabled=settings.get("google_sheets_enabled", True),
         has_google_credentials=has_creds,
-        google_sheet_title=settings.get("google_sheet_title", "FC TIMES_ FC121-130")
+        google_sheet_title=settings.get("google_sheet_title", "FC TIMES_ FC121-130"),
+        app_version=updater.get_current_version(),
+        ai_engine_type=settings.get("ocr_engine_type", "cloud"),
+        has_gemini_key=bool(settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")),
+        gemini_model=settings.get("gemini_model", "gemini-3.8-flash")
     )
+
+@app.route('/api/app/version', methods=['GET'])
+def api_app_version():
+    """Returns the current installed application version."""
+    return jsonify({"version": updater.get_current_version()})
+
+@app.route('/api/app/check-update', methods=['GET'])
+def api_check_update():
+    """Checks for latest releases on GitHub."""
+    info = updater.check_for_updates()
+    return jsonify(info)
+
+@app.route('/api/app/update', methods=['POST'])
+def api_apply_update():
+    """Applies update if running from repository."""
+    res = updater.apply_update()
+    return jsonify(res)
 
 _current_scan_progress = {
     "active": False,
@@ -148,16 +168,39 @@ def api_scan():
             cart_id = ""
             date_val = ""
             raw_text_parts = []
+            scan_context = {"worker_name": "", "cart_id": "", "date": ""}
+            scan_start_time = time.time()
+            page_durations = []
 
             for p_idx, p_path in enumerate(rendered_pages, 1):
+                p_start = time.time()
                 p_name = Path(p_path).name
                 page_urls.append(f"/api/image/{p_name}")
-                _current_scan_progress["current_page"] = p_idx
+                
+                # Dynamic ETA calculation based on real measured page speeds
+                elapsed_now = int(time.time() - scan_start_time)
+                avg_speed = (sum(page_durations) / len(page_durations)) if page_durations else 10.0
+                pages_remaining = max(1, total_pages - p_idx + 1)
+                real_eta = max(3, int(avg_speed * pages_remaining))
                 page_start_pct = int(10 + (85 * (p_idx - 1) / total_pages))
-                _current_scan_progress["percent"] = page_start_pct
-                _current_scan_progress["message"] = f"Analyzing Page {p_idx} of {total_pages} (Neural OCR & digit boxes)..."
 
-                p_res = ocr_engine.process_document_ocr(p_path)
+                worker_disp = scan_context.get("worker_name", "")
+                cart_disp = scan_context.get("cart_id", "")
+                detail = f" ({worker_disp} • {cart_disp})" if (worker_disp or cart_disp) else ""
+
+                _current_scan_progress.update({
+                    "current_page": p_idx,
+                    "total_pages": total_pages,
+                    "percent": page_start_pct,
+                    "message": f"Analyzing Page {p_idx} of {total_pages}{detail}...",
+                    "eta_secs": real_eta,
+                    "elapsed_secs": elapsed_now,
+                    "active_worker": worker_disp,
+                    "active_cart": cart_disp
+                })
+
+                p_res = ocr_engine.process_document_ocr(p_path, context=scan_context)
+                page_durations.append(time.time() - p_start)
 
                 page_end_pct = int(10 + (85 * p_idx / total_pages))
                 _current_scan_progress["percent"] = page_end_pct
@@ -182,17 +225,29 @@ def api_scan():
                     all_blank_codes.append(b)
 
             if not cart_id:
-                cart_id = ""
+                cart_id = scan_context.get("cart_id", "")
             if not worker_name:
-                worker_name = ""
+                worker_name = scan_context.get("worker_name", "")
             if not date_val:
-                date_val = datetime.now().strftime("%m/%d/%y")
+                date_val = scan_context.get("date") or datetime.now().strftime("%m/%d/%y")
 
             # Propagate cart_id to rows that didn't have one if cart_id was found
             if cart_id:
                 for r in all_rows:
                     if not r.get("cart_id"):
                         r["cart_id"] = cart_id
+
+            # Auto-detect Food Cart number and see if we need to add a new food cart tab
+            is_new_cart = False
+            if cart_id:
+                norm_cart = storage.normalize_cart_tab(cart_id)
+                cur_tabs = config.get_cart_tabs()
+                if norm_cart not in cur_tabs:
+                    cur_tabs.append(norm_cart)
+                    config.save_cart_tabs(cur_tabs)
+                    is_new_cart = True
+
+            partial_count = sum(1 for r in all_rows if r.get("is_partial"))
 
             first_page_name = Path(rendered_pages[0]).name
             ocr_result = {
@@ -209,6 +264,8 @@ def api_scan():
                 "raw_text": "\n\n".join(raw_text_parts),
                 "checkbox_count": 0,
                 "is_multi_page": True,
+                "is_new_cart": is_new_cart,
+                "partial_count": partial_count,
                 "fields": {
                     "worker_name": worker_name,
                     "date": date_val,
@@ -328,11 +385,21 @@ def api_update_cart_row(cart_id, row_idx):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/cart/<cart_id>/row/<int:row_idx>', methods=['DELETE'])
+@app.route('/api/cart/<cart_id>/row/<int:row_idx>', methods=['DELETE', 'POST'])
 def api_delete_cart_row(cart_id, row_idx):
-    """Deletes an incorrect or duplicate entry by hand from Excel and Google Sheets."""
+    """Deletes an incorrect or duplicate entry by hand from Excel, CSV, and Google Sheets."""
+    row_data = request.get_json(silent=True) or {}
     try:
-        res = storage.delete_cart_row(cart_id, row_idx)
+        res = storage.delete_cart_row(cart_id, row_idx, row_data=row_data)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/cart/<cart_id>/clear', methods=['POST', 'DELETE'])
+def api_clear_cart_tab(cart_id):
+    """Clears all logged task entries from a specific cart selection."""
+    try:
+        res = storage.clear_cart_tab(cart_id)
         return jsonify(res)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -403,6 +470,68 @@ def api_google_sheets_settings():
         updated = config.save_settings(payload)
         return jsonify({"status": "success", "settings": updated})
     return jsonify({"status": "success", "settings": config.get_settings()})
+
+@app.route('/api/ai/settings', methods=['GET', 'POST'])
+def api_ai_settings():
+    """Get or update AI Vision OCR settings."""
+    settings = config.get_settings()
+    if request.method == 'POST':
+        payload = request.get_json() or {}
+        update_data = {}
+        if 'ocr_engine_type' in payload:
+            update_data['ocr_engine_type'] = payload['ocr_engine_type']
+        if 'gemini_api_key' in payload and payload['gemini_api_key'].strip():
+            update_data['gemini_api_key'] = payload['gemini_api_key'].strip()
+        if 'gemini_model' in payload:
+            update_data['gemini_model'] = payload['gemini_model']
+        
+        updated = config.save_settings(update_data)
+        settings = updated
+
+    raw_key = settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")
+    masked_key = ""
+    if raw_key:
+        masked_key = raw_key[:6] + "..." + raw_key[-4:] if len(raw_key) > 10 else "***"
+
+    return jsonify({
+        "status": "success",
+        "ocr_engine_type": settings.get("ocr_engine_type", "cloud"),
+        "gemini_api_key_set": bool(raw_key),
+        "gemini_api_key_masked": masked_key,
+        "gemini_model": settings.get("gemini_model", "gemini-3.8-flash")
+    })
+
+@app.route('/api/ai/test-key', methods=['POST'])
+def api_ai_test_key():
+    """Validates Gemini API Key by making a lightweight test call."""
+    import requests
+    payload = request.get_json() or {}
+    key = payload.get("gemini_api_key", "").strip() or config.get_settings().get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")
+    model = payload.get("gemini_model", "").strip() or config.get_settings().get("gemini_model") or "gemini-3.8-flash"
+
+    if not key:
+        return jsonify({"status": "error", "message": "No API Key provided to test."}), 400
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+    req_body = {
+        "contents": [{"parts": [{"text": "Say 'OK'"}]}]
+    }
+    try:
+        resp = requests.post(url, json=req_body, timeout=10)
+        if resp.status_code == 200:
+            return jsonify({
+                "status": "success",
+                "message": f"Connection verified successfully! ({model} is active and ready)."
+            })
+        else:
+            try:
+                err_data = resp.json()
+                msg = err_data.get("error", {}).get("message", resp.text)
+            except Exception:
+                msg = resp.text
+            return jsonify({"status": "error", "message": f"API Error (HTTP {resp.status_code}): {msg}"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Connection error: {str(e)}"}), 500
 
 @app.route('/api/google-sheets/upload-credentials', methods=['POST'])
 def api_upload_credentials():
@@ -614,6 +743,15 @@ def api_cart_tabs():
         return jsonify({"status": "error", "message": "Cart tab not found"}), 404
 
     return jsonify({"status": "success", "cart_tabs": config.get_cart_tabs()})
+
+@app.route('/api/admin/clear-entries', methods=['POST'])
+def api_clear_entries():
+    """Clears all timesheet entries across all cart tabs to start fresh."""
+    try:
+        res = storage.clear_all_timesheet_entries()
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to clear entries: {str(e)}"}), 500
 
 @app.route('/api/feedback', methods=['POST'])
 def api_feedback():

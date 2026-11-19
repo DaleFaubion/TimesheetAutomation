@@ -23,6 +23,10 @@
         <span style="font-size: 0.95rem;">💬</span>
         <span>Feedback & Notes</span>
       </button>
+      <div id="appVersionBadge" class="header-badge" style="cursor: pointer;" title="Application Version & Auto-Updates">
+        <span id="appVersionText">v{{ app_version }}</span>
+        <span id="updateAvailablePill" style="display: none; background: #f59e0b; color: #0f172a; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; font-weight: 700; margin-left: 6px;">Update!</span>
+      </div>
       <div id="googleSheetsBadge" class="google-sync-badge">
         <span class="sync-dot"></span>
         <span id="googleSheetsBadgeText">Checking Google Sheets...</span>
@@ -52,17 +56,11 @@
         </svg>
         Enter Timesheet (By Hand)
       </button>
-      <button class="btn btn-outline" id="btnOpenWorkerQR">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 002 2z" />
-        </svg>
-        Worker QR Code
-      </button>
       <button class="btn btn-outline" id="btnOpenCodesModal">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        Task Codes (MT/RT)
+        Task Codes (MT/OT/RT)
       </button>
       <button class="btn btn-outline" id="btnOpenRosterModal">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -88,6 +86,12 @@
         </svg>
         Export CSV Audit
       </a>
+      <button class="btn btn-outline" id="btnOpenAiSettings" style="border-color: #3b82f6; color: #1d4ed8; background: #eff6ff;" title="Configure AI Cloud Vision (Google Gemini)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        AI Vision (Gemini)
+      </button>
       <button class="btn btn-outline" id="btnConfigureGoogleSheets">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -147,7 +151,12 @@
     <div class="card hidden collapsible-card" id="paperScanCard" style="border-left: 4px solid var(--brand-blue);">
       <div class="card-header-row">
         <div>
-          <div class="card-title" style="margin-bottom: 0;">Scan & Process Paper Timesheets</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="card-title" style="margin-bottom: 0;">Scan & Process Paper Timesheets</div>
+            <span id="scanAiBadge" class="badge" style="background: {% if ai_engine_type == 'cloud' and has_gemini_key %}#dbeafe; color: #1e40af;{% else %}#f3f4f6; color: #4b5563;{% endif %} font-size: 0.76rem; padding: 2px 10px; border-radius: 9999px; font-weight: 600; cursor: pointer;" title="Click to open AI Vision Settings">
+              {% if ai_engine_type == 'cloud' and has_gemini_key %}✨ Gemini Vision Active{% else %}⚙️ Offline RapidOCR{% endif %}
+            </span>
+          </div>
           <div class="card-desc" style="margin-bottom: 0;">Upload scanned PDF or JPG/PNG image from the office scanner to auto-extract fields.</div>
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -207,6 +216,12 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
             Add Entry to <span id="quickAddCartName">FC127</span>
+          </button>
+          <button class="btn btn-sm btn-outline" id="btnClearCartData" style="color: #b91c1c; border-color: #fca5a5; background: #fff;" title="Delete all task entries from this trailer tab">
+            <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Clear Cart Data
           </button>
         </div>
       </div>
@@ -272,6 +287,17 @@
 
         <!-- Timesheet Header Fields -->
         <div class="doc-fields-panel">
+          <!-- Warning banner for partially filled entries with 1-click actions -->
+          <div id="modalPartialWarning" style="display: none; background: #fffbeb; border: 1px solid #fef3c7; color: #b45309; padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; font-weight: 600; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.1rem;">⚠️</span>
+              <span id="modalPartialWarningText">Some entries are partially filled. Please verify or complete highlighted fields before saving.</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btnAutoFillPartial" class="btn btn-sm btn-outline" style="border-color: #f59e0b; color: #b45309; padding: 3px 10px; font-size: 0.78rem; background: #fff;">Fill Missing Times</button>
+              <button type="button" id="btnRemoveIncomplete" class="btn btn-sm btn-outline" style="border-color: #ef4444; color: #b91c1c; padding: 3px 10px; font-size: 0.78rem; background: #fff;">Remove Incomplete</button>
+            </div>
+          </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
             <div class="form-field">
               <label>Worker / Employee Name</label>
@@ -492,6 +518,83 @@
         <div style="display:flex; gap:10px;">
           <button id="btnCancelGoogleModal" class="btn btn-outline">Cancel</button>
           <button id="btnSaveGoogleSettings" class="btn btn-primary">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Vision (Google Gemini Cloud) Settings Modal -->
+  <div id="aiSettingsModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>🤖</span> AI Vision & OCR Settings
+        </h3>
+        <button id="btnCloseAiModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div style="padding: 16px 0;">
+        <!-- Engine selection -->
+        <div class="form-group" style="margin-bottom: 18px;">
+          <label style="font-weight: 600; display: block; margin-bottom: 8px;">Recognition Engine</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <label id="lblEngineCloud" style="border: 2px solid #3b82f6; background: #eff6ff; padding: 12px; border-radius: 8px; cursor: pointer; display: block;">
+              <input type="radio" name="aiEngineType" value="cloud" id="engineCloud" checked style="margin-right: 6px;">
+              <strong style="color: #1e40af;">✨ Google Gemini Cloud</strong>
+              <div style="font-size: 0.78rem; color: #3b82f6; margin-top: 4px;">Human-level handwriting accuracy. Free tier (1,500 pages/day).</div>
+            </label>
+            <label id="lblEngineLocal" style="border: 1px solid #d1d5db; background: #f9fafb; padding: 12px; border-radius: 8px; cursor: pointer; display: block;">
+              <input type="radio" name="aiEngineType" value="local" id="engineLocal" style="margin-right: 6px;">
+              <strong style="color: #374151;">⚙️ Offline Local (RapidOCR)</strong>
+              <div style="font-size: 0.78rem; color: #6b7280; margin-top: 4px;">Runs locally on CPU. No API key needed, but low handwriting accuracy.</div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Gemini API Key Section -->
+        <div id="geminiConfigSection" style="margin-bottom: 18px;">
+          <label for="inputGeminiApiKey" style="font-weight: 600; display: block; margin-bottom: 6px;">
+            Google Gemini API Key
+          </label>
+          <div style="display: flex; gap: 8px;">
+            <input type="password" id="inputGeminiApiKey" class="form-control" placeholder="Paste your API key here (AIzaSy...)" style="flex: 1; padding: 8px 12px; font-family: monospace; border: 1px solid var(--border); border-radius: 6px;">
+            <button type="button" id="btnToggleApiKeyVisibility" class="btn btn-outline btn-sm" style="padding: 0 12px;">👁️</button>
+          </div>
+          <div style="margin-top: 8px; font-size: 0.82rem; color: #4b5563; line-height: 1.4;">
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="color: #2563eb; font-weight: 700; text-decoration: underline; display: inline-flex; align-items: center; gap: 4px;">
+              <span>🔑</span> Get a Free Gemini API Key at Google AI Studio &rarr;
+            </a>
+            <div style="color: #6b7280; font-size: 0.77rem; margin-top: 2px;">
+              (100% Free: Click "Create API Key" with any Google account. No credit card required. 1,500 scans/day free limit.)
+            </div>
+          </div>
+
+          <!-- Model selection -->
+          <div style="margin-top: 14px;">
+            <label for="selectGeminiModel" style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 0.85rem;">
+              Vision Model
+            </label>
+            <select id="selectGeminiModel" class="form-control" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;">
+              <option value="gemini-3.8-flash" selected>gemini-3.8-flash (Recommended: Latest & Fast • Free Tier)</option>
+              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+              <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+            </select>
+          </div>
+
+          <!-- Connection Test Feedback Area -->
+          <div id="aiTestFeedback" style="margin-top: 14px; padding: 10px 14px; border-radius: 6px; font-size: 0.84rem; display: none;"></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 8px;">
+          <button type="button" id="btnTestGeminiKey" class="btn btn-outline" style="border-color: #3b82f6; color: #1d4ed8;">
+            🔌 Test Connection
+          </button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="btnCloseAiModalBtn" class="btn btn-outline">Cancel</button>
+            <button type="button" id="btnSaveAiSettings" class="btn btn-primary" style="background: #2563eb;">
+              Save Settings
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -726,30 +829,6 @@
     </div>
   </div>
 
-  <!-- Worker Mobile QR Code Modal -->
-  <div id="workerQRModal" class="modal-backdrop hidden">
-    <div class="modal-card" style="max-width: 480px; text-align: center;">
-      <div class="modal-header">
-        <h3 class="modal-title" style="margin: 0 auto;">📱 Worker Mobile Scanner</h3>
-        <button id="btnCloseWorkerQRModal" class="modal-close-btn">&times;</button>
-      </div>
-
-      <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 16px;">
-        Workers scan this code while connected to company Wi-Fi to snap and submit timesheets directly from phone cameras.
-      </p>
-
-      <div class="qr-container" style="margin-bottom: 16px;">
-        <img src="{{ qr_code_data_url }}" alt="AFCR Mobile Scanner QR" class="qr-image" id="qrImgModal">
-        <div class="qr-link-badge" id="qrUrlTextModal" style="margin-top: 12px;">{{ mobile_url }}</div>
-      </div>
-
-      <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 10px;">
-        <button class="btn btn-outline" id="btnCopyLinkModal">Copy Link</button>
-        <button class="btn btn-primary" id="btnPrintQRModal">🖨️ Print Worker Flyer</button>
-      </div>
-      <small style="color: var(--text-tertiary);">Post flyer near food carts or at the shop check-in desk.</small>
-    </div>
-  </div>
 
   <!-- Standard Task Codes Reference Modal -->
   <div id="taskCodesModal" class="modal-backdrop hidden">
@@ -827,6 +906,22 @@
         <div id="trailerBadgesList" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 240px; overflow-y: auto; padding: 10px; background: var(--surface-alt); border-radius: var(--radius-sm); border: 1px solid var(--border);">
           <!-- Populated dynamically -->
         </div>
+      </div>
+
+      <!-- Reset Database Section (Requirement 1) -->
+      <div style="margin-top: 24px; padding: 14px; border-radius: var(--radius-sm); border: 1px solid #fecaca; background: #fef2f2;">
+        <div style="font-weight: 700; color: #b91c1c; font-size: 0.88rem; margin-bottom: 4px;">
+          ⚠️ Reset Database / Start Fresh
+        </div>
+        <div style="font-size: 0.78rem; color: #7f1d1d; margin-bottom: 12px; line-height: 1.4;">
+          Clears all logged test entries across all cart tabs so you can start fresh with production data. A timestamped backup is saved automatically to <code>AFCR_Scans/Exports/</code>.
+        </div>
+        <button type="button" id="btnClearAllEntries" class="btn btn-outline" style="color: #b91c1c; border-color: #f87171; background: #fff; cursor: pointer; display: inline-flex; align-items: center; font-weight: 600;">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Clear All Test Entries (Start Fresh)
+        </button>
       </div>
 
       <div style="display: flex; justify-content: flex-end; border-top: 1px solid var(--border); margin-top: 20px; padding-top: 14px;">

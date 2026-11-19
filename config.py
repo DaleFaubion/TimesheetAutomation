@@ -97,7 +97,10 @@ def get_settings() -> dict:
         "google_sheets_enabled": True,
         "google_sheet_id_or_url": "",
         "google_sheet_title": "FC TIMES_ FC121-130",
-        "has_credentials": GOOGLE_CREDENTIALS_PATH.exists()
+        "has_credentials": GOOGLE_CREDENTIALS_PATH.exists(),
+        "ocr_engine_type": "cloud",
+        "gemini_api_key": "",
+        "gemini_model": "gemini-3.8-flash"
     }
     if SETTINGS_FILE.exists():
         try:
@@ -106,6 +109,8 @@ def get_settings() -> dict:
                 default_settings.update(data)
         except Exception:
             pass
+    if default_settings.get("gemini_model") == "gemini-2.0-flash":
+        default_settings["gemini_model"] = "gemini-3.8-flash"
     default_settings["has_credentials"] = GOOGLE_CREDENTIALS_PATH.exists()
     return default_settings
 
@@ -139,6 +144,7 @@ def get_codes_db() -> dict:
             "Code", "Date", "Time In", "Out", "Task Total"
         ],
         "mt_codes": [],
+        "ot_codes": [],
         "rt_codes": []
     }
 
