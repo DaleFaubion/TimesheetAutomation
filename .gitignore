@@ -31,6 +31,8 @@ venv.bak/
 # Environment variables & Sensitive Credentials
 .env
 .env.*
+settings.local.json
+settings.json.bak
 oauth_client_secrets.json
 oauth_token.json
 google_credentials.json

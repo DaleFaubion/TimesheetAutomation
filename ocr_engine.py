@@ -345,6 +345,16 @@ def normalize_cart_token(raw_token: str, default_cart: str = "") -> str:
     if re.search(r'\b(shop|yard|office|general)\b', s, re.IGNORECASE):
         return "Shop"
 
+    # Direct match on FC + digits BEFORE replacing letters (e.g. FC129, FC 129, FC-129, FC 0129)
+    m_direct = re.search(r'\bFC[-_\s]*0*([0-9]{2,4})\b', s, re.IGNORECASE)
+    if m_direct:
+        return f"FC{m_direct.group(1)}"
+
+    # Match pure digits like '129' or '0129'
+    m_pure_digits = re.search(r'\b0*([1-9][0-9]{1,3})\b', s)
+    if m_pure_digits:
+        return f"FC{m_pure_digits.group(1)}"
+
     # Clean OCR confusions
     clean = clean_ocr_digits(s).upper().replace(" ", "")
 
@@ -354,8 +364,11 @@ def normalize_cart_token(raw_token: str, default_cart: str = "") -> str:
         return f"FC{m_fc.group(1)}"
 
     # Match standalone 2-4 digit numbers (e.g. '127', '121', '130', '1001')
-    m_num = re.search(r'\b([0-9]{2,4})\b', clean)
+    m_num = re.search(r'([0-9]{2,4})', clean)
     if m_num:
+        val = m_num.group(1).lstrip("0")
+        if len(val) >= 2:
+            return f"FC{val}"
         return f"FC{m_num.group(1)}"
 
     if clean.startswith("FC") and len(clean) >= 4:
@@ -1090,7 +1103,7 @@ def process_gemini_vision_ocr(image_path: str, api_key: str = None, model: str =
     if not key:
         raise ValueError("Google Gemini API Key is required for Cloud Vision OCR.")
 
-    target_model = model or settings.get("gemini_model") or "gemini-3.8-flash"
+    target_model = model or settings.get("gemini_model") or "gemini-flash-lite-latest"
 
     # 1. Load and optimize image for upload (max 2048px maintains handwriting detail while sub-second upload)
     pil_img = Image.open(image_path)
@@ -1118,48 +1131,42 @@ def process_gemini_vision_ocr(image_path: str, api_key: str = None, model: str =
     ctx_date = context.get("date", "")
 
     prompt = f"""You are an expert handwriting timesheet recognition AI for Affordable Food Cart Rentals (AFCR).
-Your task is to extract all timesheet information from this scanned document with maximum precision.
+Your task is to accurately extract all timesheet information from this scanned document.
 
-Context from previous pages of this scan packet:
-- Worker Name: {ctx_worker or 'Unknown'}
-- Food Cart / Trailer ID: {ctx_cart or 'Unknown'}
-- Date: {ctx_date or 'Unknown'}
+Worker Roster Reference: {json.dumps(roster)}
+Cart Tabs Reference: {json.dumps(cart_tabs)}
+Context from prior pages: Worker: {ctx_worker or 'Unknown'}, Cart: {ctx_cart or 'Unknown'}, Date: {ctx_date or 'Unknown'}
 
-AFCR Worker Roster Reference:
-{json.dumps(roster)}
-
-AFCR Trailer / Cart Tabs Reference:
-{json.dumps(cart_tabs)}
-
-Instructions:
+Key formatting instructions for this document:
 1. HEADER:
-   - worker_name: Extract the worker's name. Match against the AFCR Worker Roster (e.g. Israel, Francisco, Elijah, Dani, Chico, Carlos).
-   - date: Extract the timesheet date. Format as MM/DD/YY (e.g. '10/27/26'). If not explicitly found, use context date: '{ctx_date}'.
-   - cart_id: Extract the food cart or trailer number (e.g. 'FC129', 'FC127', 'Shop').
+   - Worker Name: Written in capital letter boxes next to 'Name' (e.g. 'I S R A E L   C H O N A Y' -> 'Israel'). Match against the worker roster.
+   - Cart #: 4 digit boxes next to 'FC' (e.g. '0 1 2 9' -> 'FC129'). Always format as FC followed by numbers, e.g. 'FC129'.
+   - Date: If written in header, format MM/DD/YY. Otherwise use context date '{ctx_date}' or row dates.
 
-2. IDENTIFY DOCUMENT TYPE:
-   - Format A: MT/OT/RT Checklist Packet (preprinted codes F1..F16, P1..P12, G1..G6, E1..E18, C1..C10, S1..S12, with line 1 and line 2, date, time in, time out, 10-min break, lunch, NA checkboxes).
-   - Format B: Daily Timesheet (columns: Task / Job, Time In, Time Out, Cart #).
+2. TIME CONVERSIONS:
+   - The worker writes in 24-hour time in digit boxes: e.g. '07:30' = 07:30 AM, '10:30' = 10:30 AM, '11:30' = 11:30 AM, '13:00' = 01:00 PM, '13:30' = 01:30 PM, '14:30' = 02:30 PM, '16:30' = 04:30 PM.
+   - Always convert extracted times to standard 12-hour AM/PM format (e.g. '07:30 AM', '01:00 PM').
 
 3. ROW EXTRACTION:
-   - ONLY include rows that have recorded activity (handwritten date, time in/out, or marked NA / lunch / break).
-   - Ignore completely blank lines where nothing was written or checked.
+   - MT packets have Line 1 and Line 2 per task code for split shifts.
+   - ONLY extract rows where the worker wrote a date, time in, time out, or checked lunch/break/NA.
+   - Ignore completely blank lines where nothing was written.
    - For each active row:
-     - code: Task code if preprinted or identified (e.g. 'F3', 'P6', 'G2', 'C1', 'Shop').
-     - line: 1 or 2 (for MT checklist pages).
-     - task: Clear description of work.
+     - code: Task code if preprinted or written (e.g. 'F3', 'F4', 'P1', 'G2', 'E1', 'C1', 'S1').
+     - line: 1 or 2.
+     - task: Clear task description.
      - category: Category name (e.g. 'Frame', 'Plumbing', 'Gas', 'Electrical', 'Carpentry', 'Sheet Metal', 'Shop', etc.).
      - type: 'Build', 'Prep', or 'Other'.
-     - date: Date for this row (MM/DD/YY).
-     - time_in: 12-hour format with AM/PM (e.g. '07:00 AM', '08:30 AM', '12:30 PM').
-     - time_out: 12-hour format with AM/PM (e.g. '02:00 PM', '03:45 PM', '12:00 PM').
-     - duration: Elapsed time formatted as 'H:MM:SS' (e.g. '7:00:00', '1:15:00').
+     - date: Date written (MM/DD/YY or MM/DD).
+     - time_in: 12-hour format with AM/PM (e.g. '07:30 AM', '11:30 AM').
+     - time_out: 12-hour format with AM/PM (e.g. '10:30 AM', '01:00 PM').
+     - duration: Elapsed time formatted as 'H:MM:SS' (e.g. '3:00:00', '1:30:00').
      - cart_id: Cart ID for this row (e.g. 'FC129', 'FC127', 'Shop').
      - is_na: true if N/A checkbox is checked.
-     - has_break_10: true if 10 min break is checked.
+     - has_break_10: true if 10-min break is checked.
      - has_lunch: true if lunch is checked.
      - is_partial: true if time_in is present but time_out is missing, or vice versa.
-     - review_reason: Explanation if partial or ambiguous.
+     - review_reason: Short reason if partial or ambiguous.
      - status: 'completed' if full times present, 'needs_review' if partial, 'na' if is_na.
 
 Return JSON strictly matching this schema:
@@ -1193,7 +1200,7 @@ Return JSON strictly matching this schema:
 """
 
     models_to_try = [target_model]
-    for alt in ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
+    for alt in ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]:
         if alt not in models_to_try:
             models_to_try.append(alt)
 
@@ -1265,10 +1272,25 @@ Return JSON strictly matching this schema:
         t_in = r.get("time_in", "").strip()
         t_out = r.get("time_out", "").strip()
 
-        if t_in:
-            t_in = clean_ocr_time_token(t_in) or t_in
-        if t_out:
-            t_out = clean_ocr_time_token(t_out) or t_out
+        def _standardize_cloud_time(t_raw):
+            if not t_raw:
+                return ""
+            s = str(t_raw).strip()
+            m = re.match(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$', s, re.IGNORECASE)
+            if m:
+                h = int(m.group(1))
+                mins = int(m.group(2))
+                period = (m.group(3) or "").upper()
+                if not period:
+                    period = "PM" if (1 <= h <= 5 or h == 12) else "AM"
+                if 13 <= h <= 23:
+                    h = h - 12
+                    period = "PM"
+                return f"{h:02d}:{mins:02d} {period}"
+            return s
+
+        t_in = _standardize_cloud_time(t_in)
+        t_out = _standardize_cloud_time(t_out)
 
         if t_in and t_out:
             calc_dur = calculate_time_duration(t_in, t_out)
@@ -1341,6 +1363,7 @@ def process_document_ocr(image_path: str, context: dict = None) -> dict:
     gemini_key = settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")
 
     # 1. Try Cloud Vision if enabled and key is provided
+    cloud_err = None
     if engine_type == "cloud" and gemini_key:
         try:
             print(f"[OCR] Processing document with Google Gemini Cloud Vision...")
@@ -1348,9 +1371,16 @@ def process_document_ocr(image_path: str, context: dict = None) -> dict:
             if result and result.get("status") == "success":
                 return result
         except Exception as e:
+            cloud_err = str(e)
             print(f"[OCR] Gemini Cloud Vision notice: {e}. Falling back to local OCR...")
 
     # 2. Local RapidOCR fallback
     print("[OCR] Processing document with local RapidOCR...")
-    return _process_document_ocr_local(image_path, context=context)
+    local_res = _process_document_ocr_local(image_path, context=context)
+    if cloud_err:
+        local_res["cloud_warning"] = f"Cloud Vision error: {cloud_err[:120]}. Fell back to local RapidOCR."
+        local_res["engine"] = "Local RapidOCR (Cloud Quota/Network Fallback)"
+    else:
+        local_res["engine"] = "Local RapidOCR"
+    return local_res
 

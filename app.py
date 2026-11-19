@@ -171,6 +171,8 @@ def api_scan():
             scan_context = {"worker_name": "", "cart_id": "", "date": ""}
             scan_start_time = time.time()
             page_durations = []
+            cloud_warnings = []
+            last_engine_name = "Cloud Vision"
 
             for p_idx, p_path in enumerate(rendered_pages, 1):
                 p_start = time.time()
@@ -201,6 +203,14 @@ def api_scan():
 
                 p_res = ocr_engine.process_document_ocr(p_path, context=scan_context)
                 page_durations.append(time.time() - p_start)
+                if p_res.get("engine"):
+                    last_engine_name = p_res["engine"]
+                if p_res.get("cloud_warning"):
+                    cloud_warnings.append(f"Page {p_idx}: {p_res['cloud_warning']}")
+
+                # Polite 1.2s delay between pages on multi-page packets to avoid hitting API burst limits
+                if p_idx < total_pages:
+                    time.sleep(1.2)
 
                 page_end_pct = int(10 + (85 * p_idx / total_pages))
                 _current_scan_progress["percent"] = page_end_pct
@@ -266,6 +276,8 @@ def api_scan():
                 "is_multi_page": True,
                 "is_new_cart": is_new_cart,
                 "partial_count": partial_count,
+                "engine": last_engine_name,
+                "cloud_warning": cloud_warnings[0] if cloud_warnings else "",
                 "fields": {
                     "worker_name": worker_name,
                     "date": date_val,

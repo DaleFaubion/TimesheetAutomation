@@ -260,8 +260,17 @@
   <div id="desktopVerifyModal" class="modal-backdrop hidden">
     <div class="modal-card modal-lg">
       <div class="modal-header">
-        <h3 class="modal-title">Verify Scanned Timesheet</h3>
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 10px;">
+          <span>Verify Scanned Timesheet</span>
+          <span id="modalEngineBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px; background: #dbeafe; color: #1e40af; font-weight: 600;">✨ Gemini Vision</span>
+        </h3>
         <button id="btnCloseModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <!-- Cloud Warning Alert Banner -->
+      <div id="modalCloudWarningBanner" style="display: none; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 14px; border-radius: 8px; margin: 0 24px 14px; font-size: 0.85rem; font-weight: 600; align-items: center; gap: 8px;">
+        <span style="font-size: 1.1rem;">⚠️</span>
+        <span id="modalCloudWarningText"></span>
       </div>
 
       <div class="modal-split">
@@ -319,15 +328,15 @@
             <table class="data-table" style="font-size: 0.82rem;">
               <thead style="position: sticky; top: 0; background: var(--brand-navy); color: white; z-index: 2;">
                 <tr>
-                  <th style="width: 22%;">Task Description</th>
-                  <th style="width: 10%;">Code</th>
-                  <th style="width: 13%;">Category</th>
+                  <th style="width: 23%;">Task Description</th>
+                  <th style="width: 8%;">Code</th>
+                  <th style="width: 12%;">Category</th>
                   <th style="width: 10%;">Type</th>
-                  <th style="width: 11%;">Date</th>
+                  <th style="width: 9%;">Date</th>
                   <th style="width: 9%;">Time In</th>
                   <th style="width: 9%;">Out</th>
                   <th style="width: 8%;">Total</th>
-                  <th style="width: 9%;">Cart #</th>
+                  <th style="width: 8%;">Cart #</th>
                   <th style="width: 4%;"></th>
                 </tr>
               </thead>
@@ -569,15 +578,15 @@
             </div>
           </div>
 
-          <!-- Model selection -->
+          <!-- Model selection (Strictly verified available models) -->
           <div style="margin-top: 14px;">
             <label for="selectGeminiModel" style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 0.85rem;">
               Vision Model
             </label>
             <select id="selectGeminiModel" class="form-control" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;">
-              <option value="gemini-3.8-flash" selected>gemini-3.8-flash (Recommended: Latest & Fast • Free Tier)</option>
-              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+              <option value="gemini-flash-lite-latest" selected>gemini-flash-lite-latest (Recommended: High Free Quota • Fast Vision)</option>
+              <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Active • Gemini 3.1 High-Speed Multimodal)</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Active • Gemini 3.5 Generation Multimodal)</option>
             </select>
           </div>
 

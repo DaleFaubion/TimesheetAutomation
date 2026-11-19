@@ -967,17 +967,25 @@ def delete_cart_row(cart_id: str, row_idx: int, row_data: dict = None) -> dict:
     """
     Deletes an entry from Excel, CSV audit log, and Google Sheets.
     Uses row_idx and optional row_data fields for precision matching across sources.
+    Fully tied across all pages and tabs (works seamlessly from 'All' or specific cart tabs).
     """
     if row_data is None:
         row_data = {}
 
-    cart_tab = normalize_cart_tab(cart_id)
-    w_name = str(row_data.get("name", "")).strip()
-    t_task = str(row_data.get("task", "")).strip()
-    t_in = str(row_data.get("time_in", "")).strip()
-    t_out = str(row_data.get("time_out", "")).strip()
-    t_code = str(row_data.get("code", "")).strip()
-    date_val = str(row_data.get("date", "")).strip()
+    cart_raw = str(cart_id or "").strip()
+    cand_cart = row_data.get("cart_id") or row_data.get("Cart #") or row_data.get("cart") or ""
+    if cart_raw.upper() in ["__ALL__", "ALL", "ALL AUDIT LOG", "ALLAUDITLOG"] and cand_cart:
+        cart_tab = normalize_cart_tab(cand_cart)
+    else:
+        cart_tab = normalize_cart_tab(cart_raw) if cart_raw else normalize_cart_tab(cand_cart)
+
+    w_name = str(row_data.get("name", "") or row_data.get("Worker Name", "")).strip()
+    t_task = str(row_data.get("task", "") or row_data.get("Task", "")).strip()
+    t_in = str(row_data.get("time_in", "") or row_data.get("Time In", "")).strip()
+    t_out = str(row_data.get("time_out", "") or row_data.get("Time Out", "")).strip()
+    t_code = str(row_data.get("code", "") or row_data.get("Code", "")).strip()
+    date_val = str(row_data.get("date", "") or row_data.get("Date", "")).strip()
+    sub_id = str(row_data.get("submission_id", "") or row_data.get("Submission ID", "")).strip()
 
     deleted_from = []
 
@@ -985,28 +993,40 @@ def delete_cart_row(cart_id: str, row_idx: int, row_data: dict = None) -> dict:
     if config.EXCEL_FC_WORKBOOK_PATH.exists():
         try:
             wb = openpyxl.load_workbook(config.EXCEL_FC_WORKBOOK_PATH)
+            target_sheet_name = None
+            target_r = None
+
             if cart_tab in wb.sheetnames:
-                ws = wb[cart_tab]
-                target_r = None
-                
-                # Match by cell contents if row_data provided
+                sheets_to_search = [cart_tab]
+            else:
+                sheets_to_search = [s for s in wb.sheetnames if s.startswith("FC") or s == "Shop"]
+
+            for sname in sheets_to_search:
+                ws = wb[sname]
                 if w_name or t_task:
                     for r_i in range(3, ws.max_row + 1):
                         cell_name = str(ws.cell(r_i, 1).value or "").strip()
                         cell_task = str(ws.cell(r_i, 2).value or "").strip()
-                        if (not w_name or cell_name.lower() == w_name.lower()) and \
-                           (not t_task or cell_task.lower() == t_task.lower()):
+                        
+                        w_match = not w_name or (w_name.lower() in cell_name.lower() or cell_name.lower() in w_name.lower())
+                        t_match = not t_task or (t_task.lower() in cell_task.lower() or cell_task.lower() in t_task.lower())
+                        if w_match and t_match:
+                            target_sheet_name = sname
                             target_r = r_i
                             break
-
-                if target_r is None and 3 <= row_idx <= ws.max_row:
+                if target_r is None and sname == cart_tab and 3 <= row_idx <= ws.max_row:
+                    target_sheet_name = sname
                     target_r = row_idx
+                if target_r:
+                    break
 
-                if target_r and 3 <= target_r <= ws.max_row:
-                    ws.delete_rows(target_r, 1)
-                    wb.save(config.EXCEL_FC_WORKBOOK_PATH)
-                    deleted_from.append("Excel")
-                    print(f"[Excel] Deleted row {target_r} from {cart_tab}")
+            if target_sheet_name and target_r:
+                ws = wb[target_sheet_name]
+                ws.delete_rows(target_r, 1)
+                wb.save(config.EXCEL_FC_WORKBOOK_PATH)
+                cart_tab = target_sheet_name
+                deleted_from.append(f"Excel ({target_sheet_name})")
+                print(f"[Excel] Deleted row {target_r} from {target_sheet_name}")
         except Exception as ex:
             print(f"[Excel Delete Row Error] {ex}")
 
@@ -1020,22 +1040,30 @@ def delete_cart_row(cart_id: str, row_idx: int, row_data: dict = None) -> dict:
                 headers = next(reader, None)
                 for r in reader:
                     if not deleted_csv and r and len(r) >= 12:
-                        r_cart = normalize_cart_tab(r[5])
-                        if r_cart == cart_tab:
-                            r_worker = r[3].strip()
-                            r_task = r[6].strip()
-                            if (not w_name or r_worker.lower() == w_name.lower()) and \
-                               (not t_task or r_task.lower() == t_task.lower()):
-                                deleted_csv = True
-                                continue
+                        # Match by Submission ID if provided
+                        if sub_id and r[0].strip() == sub_id:
+                            deleted_csv = True
+                            continue
+                        
+                        r_cart = normalize_cart_tab(r[5]) if len(r) > 5 else ""
+                        r_worker = r[3].strip() if len(r) > 3 else ""
+                        r_task = r[6].strip() if len(r) > 6 else ""
+
+                        cart_matches = (not cart_tab or cart_tab.upper() in ["__ALL__", "ALL"] or r_cart == cart_tab)
+                        w_match = not w_name or (w_name.lower() in r_worker.lower() or r_worker.lower() in w_name.lower())
+                        t_match = not t_task or (t_task.lower() in r_task.lower() or r_task.lower() in t_task.lower())
+
+                        if cart_matches and w_match and t_match:
+                            deleted_csv = True
+                            continue
                     rows.append(r)
             if headers and deleted_csv:
                 with open(config.CSV_LOG_PATH, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
                     writer.writerow(headers)
                     writer.writerows(rows)
-                deleted_from.append("CSV")
-                print(f"[CSV] Deleted row from {cart_tab}")
+                deleted_from.append("CSV Log")
+                print(f"[CSV] Deleted row matching {w_name} / {t_task}")
         except Exception as ex:
             print(f"[CSV Delete Row Error] {ex}")
 
@@ -1045,10 +1073,29 @@ def delete_cart_row(cart_id: str, row_idx: int, row_data: dict = None) -> dict:
         try:
             gc = _get_gspread_client()
             sh = _open_google_spreadsheet(gc, settings)
-            ws = sh.worksheet(cart_tab)
-            if 3 <= row_idx <= ws.row_count:
-                ws.delete_rows(row_idx)
-                deleted_from.append("Google Sheets")
+            if cart_tab and cart_tab.upper() not in ["__ALL__", "ALL"]:
+                try:
+                    ws = sh.worksheet(cart_tab)
+                    all_vals = ws.get_all_values()
+                    target_gs_row = None
+                    if w_name or t_task:
+                        for g_idx, r_vals in enumerate(all_vals[2:], start=3):
+                            g_name = r_vals[0].strip() if len(r_vals) > 0 else ""
+                            g_task = r_vals[1].strip() if len(r_vals) > 1 else ""
+                            w_m = not w_name or (w_name.lower() in g_name.lower() or g_name.lower() in w_name.lower())
+                            t_m = not t_task or (t_task.lower() in g_task.lower() or g_task.lower() in t_task.lower())
+                            if w_m and t_m:
+                                target_gs_row = g_idx
+                                break
+                    if target_gs_row is None and 3 <= row_idx <= ws.row_count:
+                        target_gs_row = row_idx
+
+                    if target_gs_row and 3 <= target_gs_row <= ws.row_count:
+                        ws.delete_rows(target_gs_row)
+                        deleted_from.append(f"Google Sheets ({cart_tab})")
+                        print(f"[Google Sheets] Deleted row {target_gs_row} from {cart_tab}")
+                except Exception as ws_err:
+                    print(f"[Google Sheets Delete Row Error on {cart_tab}] {ws_err}")
         except Exception as e:
             print(f"[Google Sheets Delete Row Notice] {e}")
 
@@ -1063,7 +1110,12 @@ def clear_cart_tab(cart_id: str) -> dict:
     Clears all timesheet entries from a specific food cart tab across Excel,
     CSV audit log, and Google Sheets while preserving Row 1 (header title & formula)
     and Row 2 (column headers).
+    If cart_id is '__ALL__' or 'All', clears all entries across all tabs simultaneously.
     """
+    if str(cart_id).strip().upper() in ["__ALL__", "ALL", "ALL AUDIT LOG", "ALLAUDITLOG", "ALL CARTS", "ALLCARTS"]:
+        print("[Storage] Clearing all timesheet entries across ALL trailer tabs...")
+        return clear_all_timesheet_entries()
+
     cart_tab = normalize_cart_tab(cart_id)
     cleared_from = []
 

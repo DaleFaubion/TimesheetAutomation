@@ -14,24 +14,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 def check_git_updates():
-    """Checks for remote git updates if running inside a repository."""
-    git_dir = BASE_DIR / ".git"
-    if git_dir.exists():
-        print("[SYNC] Checking for remote updates from GitHub...")
-        try:
-            res = subprocess.run(
-                ["git", "pull", "--quiet"],
-                cwd=str(BASE_DIR),
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if res.returncode == 0:
-                print("[SYNC] Application is up to date!")
-            else:
-                print("[SYNC] Notice: Remote sync skipped or not configured.")
-        except Exception:
-            pass
+    """Checks for remote git updates if running inside a repository and applies them safely."""
+    try:
+        import updater
+        return updater.auto_update_on_startup(verbose=True)
+    except Exception as e:
+        print(f"[SYNC] Notice: {e}")
+        return False
 
 def verify_dependencies():
     """Checks requirements.txt and installs missing packages."""
@@ -119,22 +108,16 @@ def main():
     print("=" * 60)
     print()
 
-    # 1. Check Git and Releases updates
+    # 1. Automatic GitHub Update Check on Launch
     try:
         import updater
-        print(f"[VERSION] Current Installed Build: v{updater.get_current_version()}")
-        up_info = updater.check_for_updates()
-        if up_info.get("is_update_available"):
-            print(f"[UPDATE] A new release (v{up_info.get('latest_version')}) is available!")
-            if (BASE_DIR / ".git").exists():
-                print("[UPDATE] Automatically pulling latest updates from GitHub...")
-                check_git_updates()
-            else:
-                print(f"[UPDATE] Download latest release: {up_info.get('release_url')}")
-        else:
+        print(f"[VERSION] Installed Build: v{updater.get_current_version()}")
+        print("[UPDATE] Checking GitHub for updates (main branch)...")
+        updated = updater.auto_update_on_startup(verbose=True)
+        if not updated:
             print("[SYNC] Application is up to date!")
     except Exception as e:
-        check_git_updates()
+        print(f"[SYNC] Update check notice: {e}")
 
     # 2. Verify dependencies
     verify_dependencies()

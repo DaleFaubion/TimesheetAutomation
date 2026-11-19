@@ -72,6 +72,7 @@ GOOGLE_CREDENTIALS_PATH = BASE_DIR / "google_credentials.json"
 OAUTH_TOKEN_PATH = BASE_DIR / "oauth_token.json"
 OAUTH_CLIENT_SECRETS_PATH = BASE_DIR / "oauth_client_secrets.json"
 SETTINGS_FILE = BASE_DIR / "settings.json"
+LOCAL_SETTINGS_FILE = BASE_DIR / "settings.local.json"
 CONFIG_FILE = BASE_DIR / "config.json"
 CODES_FILE = BASE_DIR / "codes.json"
 
@@ -100,8 +101,9 @@ def get_settings() -> dict:
         "has_credentials": GOOGLE_CREDENTIALS_PATH.exists(),
         "ocr_engine_type": "cloud",
         "gemini_api_key": "",
-        "gemini_model": "gemini-3.8-flash"
+        "gemini_model": "gemini-flash-lite-latest"
     }
+    # 1. Read base settings.json
     if SETTINGS_FILE.exists():
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
@@ -109,8 +111,17 @@ def get_settings() -> dict:
                 default_settings.update(data)
         except Exception:
             pass
-    if default_settings.get("gemini_model") == "gemini-2.0-flash":
-        default_settings["gemini_model"] = "gemini-3.8-flash"
+    # 2. Overlay local uncommitted settings if present (protects keys across git operations)
+    if LOCAL_SETTINGS_FILE.exists():
+        try:
+            with open(LOCAL_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                local_data = json.load(f)
+                default_settings.update(local_data)
+        except Exception:
+            pass
+
+    if default_settings.get("gemini_model") not in ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]:
+        default_settings["gemini_model"] = "gemini-flash-lite-latest"
     default_settings["has_credentials"] = GOOGLE_CREDENTIALS_PATH.exists()
     return default_settings
 
@@ -118,8 +129,17 @@ def save_settings(new_settings: dict) -> dict:
     import json
     cur = get_settings()
     cur.update(new_settings)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(cur, f, indent=2)
+    # Save to both settings.json and local uncommitted file
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(cur, f, indent=2)
+    except Exception:
+        pass
+    try:
+        with open(LOCAL_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(cur, f, indent=2)
+    except Exception:
+        pass
     cur["has_credentials"] = GOOGLE_CREDENTIALS_PATH.exists()
     return cur
 

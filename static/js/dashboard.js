@@ -155,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // State
   let activeCartTab = "FC127";
   let cachedCartRows = [];
+  let cachedAuditLogRows = [];
   let currentDesktopImageName = "";
   let currentDesktopRawText = "";
   let codesDatabase = { mt_codes: [], rt_codes: [], cart_tabs: [], worker_roster: [] };
@@ -344,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
 
     const isAllActive = activeCartTab === '__ALL__' ? 'active' : '';
-    html += `<button class="cart-tab-btn ${isAllActive}" data-cart="__ALL__">All Audit Log</button>`;
+    html += `<button class="cart-tab-btn ${isAllActive}" data-cart="__ALL__">All</button>`;
 
     cartTabsList.innerHTML = html;
 
@@ -358,9 +359,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function switchCartTab(cartId) {
     activeCartTab = cartId;
-    if (quickAddCartName) quickAddCartName.textContent = cartId;
+    const isAll = (cartId === '__ALL__');
+
+    if (quickAddCartName) quickAddCartName.textContent = isAll ? 'All Carts' : cartId;
     if (btnQuickAddRow) {
-      btnQuickAddRow.style.display = cartId === '__ALL__' ? 'none' : 'inline-flex';
+      btnQuickAddRow.style.display = isAll ? 'none' : 'inline-flex';
+    }
+    if (btnInitCartMT) {
+      btnInitCartMT.style.display = isAll ? 'none' : 'inline-flex';
+    }
+
+    if (btnClearCartData) {
+      if (isAll) {
+        btnClearCartData.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Clear All Carts Data
+        `;
+        btnClearCartData.title = "Delete all task entries across ALL trailer tabs, Excel, and Google Sheets";
+      } else {
+        btnClearCartData.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Clear Cart Data
+        `;
+        btnClearCartData.title = `Delete all task entries from ${cartId}`;
+      }
     }
 
     cartTabsList.querySelectorAll('.cart-tab-btn').forEach(btn => {
@@ -371,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    if (cartId === '__ALL__') {
+    if (isAll) {
       loadAuditLog();
     } else {
       loadCartData(cartId);
@@ -421,37 +447,110 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadAuditLog() {
-    currentTabTitle.textContent = "Global Audit Log (All Carts)";
-    statActiveTabName.textContent = "All Log";
-    currentTabTotalTime.textContent = "Raw CSV Stream";
-    cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 24px;">Loading audit log...</td></tr>`;
+    if (currentTabTitle) currentTabTitle.textContent = "All Food Carts (Global Overview)";
+    if (statActiveTabName) statActiveTabName.textContent = "All Carts";
+    if (currentTabTotalTime) currentTabTotalTime.textContent = "All Tabs Combined";
+    if (cartTableBody) {
+      cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 24px;">Loading entries from all carts...</td></tr>`;
+    }
 
     try {
       const res = await fetch('/api/history');
       const data = await res.json();
       const history = data.history || [];
-      if (history.length === 0) {
-        cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 24px; color: var(--text-tertiary);">No entries logged yet.</td></tr>`;
-        return;
-      }
+      cachedAuditLogRows = history;
+      renderAuditLogRows(history);
+    } catch (e) {
+      if (cartTableBody) cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center;">Error loading log.</td></tr>`;
+    }
+  }
 
-      cartTableBody.innerHTML = history.map(row => `
+  function renderAuditLogRows(rows) {
+    if (!rows || rows.length === 0) {
+      cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 32px 20px; color: var(--text-tertiary);">No entries logged across any cart tabs yet.</td></tr>`;
+      return;
+    }
+
+    const query = (cartFilterSearch && cartFilterSearch.value ? cartFilterSearch.value : "").toLowerCase().trim();
+    const filtered = rows.filter(r => {
+      if (!query) return true;
+      return (r['Worker Name'] || '').toLowerCase().includes(query) ||
+             (r['Task'] || r['Notes & Descriptions'] || '').toLowerCase().includes(query) ||
+             (r['Category'] || '').toLowerCase().includes(query) ||
+             (r['Code'] || r['Job / Task Code'] || '').toLowerCase().includes(query) ||
+             (r['Cart #'] || r['Trailer Number'] || '').toLowerCase().includes(query) ||
+             (r['Date'] || '').toLowerCase().includes(query);
+    });
+
+    if (filtered.length === 0) {
+      cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-tertiary); padding: 20px;">No matching rows found for "${escapeHtml(query)}".</td></tr>`;
+      return;
+    }
+
+    cartTableBody.innerHTML = filtered.map(row => {
+      const cartName = row['Cart #'] || row['Trailer Number'] || row['Cart'] || 'Shop';
+      const totalDisplay = row['Task Total'] || row['Hours Worked'] || '-';
+      const subId = row['Submission ID'] || '';
+      const workerName = row['Worker Name'] || '';
+      const taskName = row['Task'] || row['Notes & Descriptions'] || '';
+
+      return `
         <tr>
-          <td style="font-weight: 600;">${escapeHtml(row['Worker Name'] || '-')}</td>
-          <td>${escapeHtml(row['Task'] || row['Notes & Descriptions'] || '-')}</td>
-          <td>${escapeHtml(row['Category'] || '-')}</td>
-          <td>${escapeHtml(row['Build / Reconditioning'] || '-')}</td>
+          <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(workerName || '-')}</td>
+          <td style="color: #0f172a;">${escapeHtml(taskName || '-')}</td>
+          <td><span style="font-size: 0.8rem; background: var(--surface-muted); padding: 2px 6px; border-radius: 4px;">${escapeHtml(row['Category'] || '-')}</span></td>
+          <td style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(row['Build / Reconditioning'] || '-')}</td>
           <td><span class="code-pill">${escapeHtml(row['Code'] || row['Job / Task Code'] || '-')}</span></td>
           <td>${escapeHtml(row['Date'] || '-')}</td>
           <td>${escapeHtml(row['Time In'] || '-')}</td>
           <td>${escapeHtml(row['Time Out'] || '-')}</td>
-          <td style="text-align: right; font-weight: 700; color: #15803d;">${escapeHtml(row['Task Total'] || row['Hours Worked'] || '-')}</td>
-          <td style="text-align: right; color: var(--text-tertiary); font-size: 0.75rem;">Audit Log</td>
+          <td style="text-align: right; font-weight: 700; color: #15803d;">${escapeHtml(totalDisplay)}</td>
+          <td style="text-align: right;">
+            <div class="action-cell">
+              <span class="badge" style="background:#e0e7ff;color:#3730a3;font-weight:700;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-right:6px;" title="Trailer">${escapeHtml(cartName)}</span>
+              <button class="btn-table-action btn-delete-all-row" data-cart="${escapeHtml(cartName)}" data-sub-id="${escapeHtml(subId)}" data-worker="${escapeHtml(workerName)}" data-task="${escapeHtml(taskName)}" title="Delete this entry from ${escapeHtml(cartName)} and all pages">🗑️</button>
+            </div>
+          </td>
         </tr>
-      `).join('');
-    } catch (e) {
-      cartTableBody.innerHTML = `<tr><td colspan="10" style="text-align: center;">Error loading log.</td></tr>`;
-    }
+      `;
+    }).join('');
+
+    // Attach row delete listener tied across all pages
+    cartTableBody.querySelectorAll('.btn-delete-all-row').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const targetCart = e.currentTarget.getAttribute('data-cart') || 'Shop';
+        const subId = e.currentTarget.getAttribute('data-sub-id') || '';
+        const workerName = e.currentTarget.getAttribute('data-worker') || '';
+        const taskName = e.currentTarget.getAttribute('data-task') || '';
+
+        const msg = `Are you sure you want to delete this task entry from ${targetCart}?\n\n• Worker: ${workerName || 'Unknown'}\n• Task: ${taskName || '-'}\n• Trailer: ${targetCart}\n\nThis will remove the line from the ${targetCart} page, Excel, Google Sheets, and the audit log.`;
+        if (!confirm(msg)) return;
+
+        try {
+          const payload = {
+            name: workerName,
+            task: taskName,
+            cart_id: targetCart,
+            submission_id: subId
+          };
+          const delRes = await fetch(`/api/cart/${encodeURIComponent(targetCart)}/row/0`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const delData = await delRes.json();
+          if (delRes.ok && delData.status === 'success') {
+            showToast(`✓ Removed entry from ${targetCart} across all pages!`);
+            loadCartSummaries();
+            loadAuditLog();
+          } else {
+            alert(delData.message || 'Could not delete entry.');
+          }
+        } catch (err) {
+          alert('Network error while deleting entry: ' + err.message);
+        }
+      });
+    });
   }
 
   function renderCartRows(rows) {
@@ -531,7 +630,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (cartFilterSearch) {
     cartFilterSearch.addEventListener('input', () => {
-      if (activeCartTab !== '__ALL__') {
+      if (activeCartTab === '__ALL__') {
+        renderAuditLogRows(cachedAuditLogRows);
+      } else {
         renderCartRows(cachedCartRows);
       }
     });
@@ -703,11 +804,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnClearCartData) {
     btnClearCartData.addEventListener('click', async () => {
       if (!activeCartTab) return;
+      const isAll = (activeCartTab === '__ALL__' || activeCartTab === 'All');
+      const label = isAll ? "ALL CARTS (Every trailer page & Google Sheets)" : `trailer tab "${activeCartTab}"`;
       const confirmed = confirm(
-        `⚠️ DELETE ALL ENTRIES FOR ${activeCartTab}?\n\n` +
-        `This will delete all logged tasks and hours in the "${activeCartTab}" tab across Excel, CSV audit log, and Google Sheets.\n\n` +
-        `The tab itself will remain with clean headers ready for fresh entries.\n\n` +
-        `Click OK to proceed with deleting all data for ${activeCartTab}.`
+        `⚠️ DELETE ALL ENTRIES FOR ${label}?\n\n` +
+        `This will delete all logged tasks and hours in ${label} across Excel, CSV audit log, and Google Sheets.\n\n` +
+        `The tabs will remain with clean headers ready for fresh entries.\n\n` +
+        `Click OK to proceed with deleting all data.`
       );
       if (!confirmed) return;
 
@@ -721,9 +824,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const data = await resp.json();
         if (resp.ok && data.status === 'success') {
-          showToast(`✓ Cleared all entries for ${activeCartTab}`);
+          showToast(isAll ? "✓ Cleared all entries across ALL cart tabs!" : `✓ Cleared all entries for ${activeCartTab}`);
           loadCartSummaries();
-          loadCartData(activeCartTab);
+          if (isAll) {
+            loadAuditLog();
+          } else {
+            loadCartData(activeCartTab);
+          }
         } else {
           alert("❌ Failed to clear cart data: " + (data.message || "Unknown error"));
         }
@@ -731,12 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert("❌ Network error: " + err.message);
       } finally {
         btnClearCartData.disabled = false;
-        btnClearCartData.innerHTML = `
-          <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-          Clear Cart Data
-        `;
+        switchCartTab(activeCartTab);
       }
     });
   }
@@ -1708,18 +1810,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const pageLabel = (data.total_pages && data.total_pages > 1) ? ` (${data.total_pages} Scanned Pages)` : '';
     modalRowCountBadge.textContent = `${rows.length} Tasks Extracted${pageLabel}`;
 
+    // Update active engine badge
+    const modalEngineBadge = document.getElementById('modalEngineBadge');
+    if (modalEngineBadge) {
+      if (data.engine && data.engine.includes('RapidOCR')) {
+        modalEngineBadge.textContent = '⚙️ Offline RapidOCR';
+        modalEngineBadge.style.background = '#f3f4f6';
+        modalEngineBadge.style.color = '#374151';
+      } else {
+        modalEngineBadge.textContent = '✨ Gemini Cloud Vision';
+        modalEngineBadge.style.background = '#dbeafe';
+        modalEngineBadge.style.color = '#1e40af';
+      }
+    }
+
+    // Display cloud quota / fallback warning if present
+    const cloudWarnBanner = document.getElementById('modalCloudWarningBanner');
+    const cloudWarnText = document.getElementById('modalCloudWarningText');
+    if (cloudWarnBanner) {
+      if (data.cloud_warning) {
+        cloudWarnBanner.style.display = 'flex';
+        if (cloudWarnText) {
+          cloudWarnText.textContent = `Cloud Vision Notice: ${data.cloud_warning}`;
+        }
+      } else {
+        cloudWarnBanner.style.display = 'none';
+      }
+    }
+
     renderModalRows(rows);
     recalcModalTotal();
     const partialBanner = document.getElementById('modalPartialWarning');
     const partialText = document.getElementById('modalPartialWarningText');
-    if (partialBanner && res.partial_count > 0) {
+    if (partialBanner && data.partial_count > 0) {
       partialBanner.style.display = 'flex';
-      if (partialText) partialText.textContent = `⚠️ ${res.partial_count} entries are partially filled. Please verify or complete highlighted fields before saving.`;
+      if (partialText) partialText.textContent = `⚠️ ${data.partial_count} entries are partially filled. Please verify or complete highlighted fields before saving.`;
     } else if (partialBanner) {
       partialBanner.style.display = 'none';
     }
-    if (res.is_new_cart) {
-      showToast(`ℹ️ Detected new Food Cart tab: ${res.cart_id}. Automatically added to system.`, 'info');
+    if (data.is_new_cart) {
+      showToast(`ℹ️ Detected new Food Cart tab: ${data.cart_id}. Automatically added to system.`, 'info');
       if (typeof loadCartTabs === 'function') loadCartTabs();
     }
     desktopVerifyModal.classList.remove('hidden');
@@ -1743,6 +1873,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const defaultCart = r.cart_id || (activeCartTab !== '__ALL__' ? activeCartTab : "FC127");
     const defaultType = r.type || "Build";
     const initialDuration = (r.time_in && r.time_out) ? calculateDuration(r.time_in, r.time_out) : (r.duration || '0:00:00');
+    const initialDate = r.date || (modalDate ? modalDate.value.trim() : '') || getTodayFormatted();
     if (r.is_partial) {
       tr.style.backgroundColor = '#fffbeb';
       tr.style.borderLeft = '4px solid #f59e0b';
@@ -1759,6 +1890,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <option value="Reconditioning" ${defaultType === 'Reconditioning' ? 'selected' : ''}>Reconditioning</option>
         </select>
       </td>
+      <td><input type="text" class="row-input-compact row-date" value="${escapeHtml(initialDate)}" placeholder="MM/DD"></td>
       <td><input type="text" class="row-input-compact row-timein" value="${escapeHtml(r.time_in || '08:00 AM')}" placeholder="e.g. 8:00 AM"></td>
       <td><input type="text" class="row-input-compact row-timeout" value="${escapeHtml(r.time_out || '12:00 PM')}" placeholder="e.g. 10:45 AM"></td>
       <td><input type="text" class="row-input-compact row-duration" value="${escapeHtml(initialDuration)}" readonly style="font-weight: 700; color: #047857; background-color: #f0fdf4; cursor: default;"></td>
@@ -1837,11 +1969,16 @@ document.addEventListener('DOMContentLoaded', () => {
     btnAddModalRow.addEventListener('click', () => {
       const allRows = modalRowsTableBody ? modalRowsTableBody.querySelectorAll('.modal-task-row') : [];
       let nextStart = "08:00 AM";
+      let prevDate = (modalDate && modalDate.value.trim()) || getTodayFormatted();
       if (allRows && allRows.length > 0) {
         const lastRow = allRows[allRows.length - 1];
         const lastTout = lastRow ? lastRow.querySelector('.row-timeout') : null;
         if (lastTout && lastTout.value && lastTout.value.trim()) {
           nextStart = lastTout.value.trim();
+        }
+        const lastDate = lastRow ? lastRow.querySelector('.row-date') : null;
+        if (lastDate && lastDate.value && lastDate.value.trim()) {
+          prevDate = lastDate.value.trim();
         }
       }
 
@@ -1850,6 +1987,7 @@ document.addEventListener('DOMContentLoaded', () => {
         code: "",
         category: "Misc.",
         type: "Build",
+        date: prevDate,
         time_in: nextStart,
         time_out: "",
         duration: "0:00:00",
@@ -1949,40 +2087,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // App Version & Auto-Update Handler
+  // App Version & Manual Update Handler (automatic checks only run when launching the app)
   const appVersionBadge = document.getElementById('appVersionBadge');
   const updateAvailablePill = document.getElementById('updateAvailablePill');
 
-  async function checkAppUpdates() {
+  async function handleAppUpdateClick() {
     try {
+      showToast("🔍 Checking GitHub for updates...");
       const res = await fetch('/api/app/check-update');
       const data = await res.json();
       if (data && data.is_update_available) {
-        if (updateAvailablePill) updateAvailablePill.style.display = 'inline-block';
-        if (appVersionBadge) {
-          appVersionBadge.title = `Update available: v${data.latest_version}. Click to update!`;
-        }
-      }
-    } catch (e) {
-      console.log('Update check notice:', e);
-    }
-  }
-  setTimeout(checkAppUpdates, 2000);
-
-  if (appVersionBadge) {
-    appVersionBadge.addEventListener('click', async () => {
-      const res = await fetch('/api/app/check-update');
-      const data = await res.json();
-      if (data && data.is_update_available) {
-        if (confirm(`New update available (v${data.latest_version})!\n\n${data.release_notes || 'Click OK to update now.'}`)) {
+        const confirmMsg = `🚀 New Update Available from GitHub!\n\nVersion: ${data.latest_version}\n${data.release_notes ? data.release_notes + '\n\n' : ''}Would you like to install this update now?`;
+        if (confirm(confirmMsg)) {
+          showToast("⬇️ Pulling latest updates from GitHub... Please wait.", 8000);
           const upRes = await fetch('/api/app/update', { method: 'POST' });
           const upData = await upRes.json();
-          alert(upData.message || 'Update completed.');
+          if (upData.status === 'success') {
+            alert(upData.message || 'Updated successfully! Reloading...');
+            window.location.reload();
+          } else {
+            alert('Update Notice:\n' + (upData.message || 'Could not automatically apply update.'));
+          }
         }
       } else {
-        alert(`AFCR Timesheet v${data.current_version || '2.1.0'} is up to date!`);
+        showToast(`✓ AFCR Timesheet v${data.current_version || '2.1.0'} is up to date!`);
       }
-    });
+    } catch (err) {
+      alert('Could not check updates: ' + err.message);
+    }
+  }
+
+  if (appVersionBadge) {
+    appVersionBadge.addEventListener('click', handleAppUpdateClick);
   }
 
   if (btnCloseModal) btnCloseModal.addEventListener('click', closeModal);
@@ -2000,6 +2136,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const codeEl = tr.querySelector('.row-code');
         const catEl = tr.querySelector('.row-category');
         const typeEl = tr.querySelector('.row-type');
+        const dateEl = tr.querySelector('.row-date');
         const tinEl = tr.querySelector('.row-timein');
         const toutEl = tr.querySelector('.row-timeout');
         const durEl = tr.querySelector('.row-duration');
@@ -2009,6 +2146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const codeVal = codeEl ? codeEl.value.trim().toUpperCase() : "";
         const catVal = catEl ? catEl.value.trim() : "Misc.";
         const typeVal = typeEl ? typeEl.value : "Build";
+        const dateVal = (dateEl && dateEl.value.trim()) || (modalDate ? modalDate.value.trim() : "") || getTodayFormatted();
         const tinVal = tinEl ? tinEl.value.trim() : "";
         const toutVal = toutEl ? toutEl.value.trim() : "";
         const durVal = durEl ? durEl.value.trim() : "0:00:00";
@@ -2032,13 +2170,14 @@ document.addEventListener('DOMContentLoaded', () => {
           task: taskVal || "General Work",
           code: codeVal,
           category: catVal || "Misc.",
-        type: typeVal,
-        time_in: tinVal,
-        time_out: toutVal,
-        duration: durVal || "0:00:00",
-        cart_id: cartVal
+          type: typeVal,
+          date: dateVal,
+          time_in: tinVal,
+          time_out: toutVal,
+          duration: durVal || "0:00:00",
+          cart_id: cartVal
+        });
       });
-    });
 
     if (hasValidationError) {
       alert(`Validation Warning:\n${errorMsg}`);
@@ -2901,7 +3040,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnTestGeminiKey) {
     btnTestGeminiKey.addEventListener('click', async () => {
       const keyVal = inputGeminiApiKey ? inputGeminiApiKey.value.trim() : '';
-      const modelVal = selectGeminiModel ? selectGeminiModel.value : 'gemini-3.8-flash';
+      const modelVal = selectGeminiModel ? selectGeminiModel.value : 'gemini-flash-lite-latest';
 
       btnTestGeminiKey.disabled = true;
       btnTestGeminiKey.textContent = 'Testing connection...';
@@ -2949,7 +3088,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSaveAiSettings.addEventListener('click', async () => {
       const engineVal = (engineLocal && engineLocal.checked) ? 'local' : 'cloud';
       const keyVal = inputGeminiApiKey ? inputGeminiApiKey.value.trim() : '';
-      const modelVal = selectGeminiModel ? selectGeminiModel.value : 'gemini-3.8-flash';
+      const modelVal = selectGeminiModel ? selectGeminiModel.value : 'gemini-flash-lite-latest';
 
       btnSaveAiSettings.disabled = true;
       btnSaveAiSettings.textContent = 'Saving...';

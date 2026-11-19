@@ -3,6 +3,11 @@ setlocal enabledelayedexpansion
 title AFCR Timesheet OCR Server
 cd /d "%~dp0"
 
+:: Ensure Git is in PATH if installed in standard directories
+if exist "%ProgramFiles%\Git\cmd" set "PATH=%ProgramFiles%\Git\cmd;%PATH%"
+if exist "%ProgramFiles%\Git\bin" set "PATH=%ProgramFiles%\Git\bin;%PATH%"
+if exist "%LOCALAPPDATA%\Programs\Git\cmd" set "PATH=%LOCALAPPDATA%\Programs\Git\cmd;%PATH%"
+
 echo ======================================================================
 echo   AFFORDABLE FOOD CART RENTALS (AFCR)
 echo   Timesheet and Document OCR Server Launcher
